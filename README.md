@@ -8,6 +8,7 @@
 
 ### ✨ Why memsearch?
 
+- 🧩 **Claude Code plugin** — Drop-in plugin gives Claude persistent memory across sessions, fully automatic via hooks
 - 🐾 **OpenClaw-compatible** — Same two-layer memory architecture (`MEMORY.md` + daily `memory/YYYY-MM-DD.md` logs), same chunking strategy, same composite chunk ID format
 - 🔌 **Pluggable embeddings** — OpenAI, Google, Voyage, Ollama, or fully local sentence-transformers
 - 🗄️ **Flexible storage** — Milvus Lite (zero config local file) → Milvus Server → Zilliz Cloud
@@ -53,6 +54,39 @@ memsearch follows the same memory philosophy as [OpenClaw](https://github.com/op
 ```
 
 🔒 The entire pipeline runs locally by default — your data never leaves your machine unless you choose a remote Milvus backend or a cloud embedding provider.
+
+## 🧩 Claude Code Plugin
+
+memsearch ships with a **Claude Code plugin** that gives Claude automatic persistent memory — no manual commands needed. Install it and Claude will remember what you worked on across sessions.
+
+```bash
+claude --plugin-dir ./plugin
+```
+
+### How it works
+
+The plugin uses 6 hooks to transparently capture, index, and recall memories:
+
+| Event | What happens |
+|-------|-------------|
+| **SessionStart** | Injects recent daily logs + semantic search results into context |
+| **UserPromptSubmit** | Searches memories relevant to your prompt and injects them |
+| **PostToolUse** | Auto-indexes when `.md` files in memory dir are edited (async) |
+| **Stop** | Agent hook reads transcript, generates AI summary, writes to daily log |
+| **PreCompact** | Ensures index is fresh before context compaction |
+| **SessionEnd** | Final index sync |
+
+Memories are stored as transparent markdown files in `.memsearch/memory/YYYY-MM-DD.md` — no opaque databases, easy to inspect and version control.
+
+### vs claude-mem
+
+| | memsearch plugin | claude-mem |
+|---|---|---|
+| Prompt-level recall | **Semantic search on every prompt** | Only at session start |
+| Pre-compaction safety | **PreCompact hook** ensures fresh index | None |
+| Storage format | **Transparent `.md` files** | Opaque SQLite |
+| Session summary | **Agent hook** — zero extra API calls | Separate Worker + Agent SDK |
+| Vector backend | **Milvus** (Lite / Server / Zilliz Cloud) | Chroma |
 
 ## 📦 Installation
 
