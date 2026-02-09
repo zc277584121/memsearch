@@ -1080,6 +1080,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "openai" },
     { name = "pymilvus", extra = ["milvus-lite"] },
     { name = "setuptools" },
     { name = "tomli-w" },
@@ -1091,7 +1092,6 @@ all = [
     { name = "anthropic" },
     { name = "google-genai" },
     { name = "ollama" },
-    { name = "openai" },
     { name = "sentence-transformers" },
     { name = "voyageai" },
 ]
@@ -1106,9 +1106,6 @@ local = [
 ]
 ollama = [
     { name = "ollama" },
-]
-openai = [
-    { name = "openai" },
 ]
 voyage = [
     { name = "voyageai" },
@@ -1125,9 +1122,9 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.40" },
     { name = "click", specifier = ">=8.1" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.0" },
-    { name = "memsearch", extras = ["openai", "google", "voyage", "ollama", "local", "anthropic"], marker = "extra == 'all'" },
+    { name = "memsearch", extras = ["google", "voyage", "ollama", "local", "anthropic"], marker = "extra == 'all'" },
     { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.4" },
-    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0" },
+    { name = "openai", specifier = ">=1.0" },
     { name = "pymilvus", extras = ["milvus-lite"], specifier = ">=2.5.0" },
     { name = "sentence-transformers", marker = "extra == 'local'", specifier = ">=3.0" },
     { name = "setuptools", specifier = "<75" },
@@ -1135,7 +1132,7 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'voyage'", specifier = ">=0.3" },
     { name = "watchdog", specifier = ">=4.0" },
 ]
-provides-extras = ["openai", "google", "voyage", "ollama", "local", "anthropic", "all"]
+provides-extras = ["google", "voyage", "ollama", "local", "anthropic", "all"]
 
 [package.metadata.requires-dev]
 dev = [

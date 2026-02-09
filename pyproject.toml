@@ -15,16 +15,16 @@ dependencies = [
     "watchdog>=4.0",
     "setuptools<75",
     "tomli_w>=1.0",
+    "openai>=1.0",
 ]
 
 [project.optional-dependencies]
-openai = ["openai>=1.0"]
 google = ["google-genai>=1.0"]
 voyage = ["voyageai>=0.3"]
 ollama = ["ollama>=0.4"]
 local = ["sentence-transformers>=3.0"]
 anthropic = ["anthropic>=0.40"]
-all = ["memsearch[openai,google,voyage,ollama,local,anthropic]"]
+all = ["memsearch[google,voyage,ollama,local,anthropic]"]
 
 [project.scripts]
 memsearch = "memsearch.cli:cli"
