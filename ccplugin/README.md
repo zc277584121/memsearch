@@ -207,9 +207,23 @@ ccplugin/
     └── session-end.sh           # Stop watch process
 ```
 
-## 🛠️ CLI Commands for Progressive Disclosure
+## 🛠️ The `memsearch` CLI
 
-The `memsearch` CLI provides two commands for deeper context retrieval:
+This plugin is built entirely on the [`memsearch`](../README.md) CLI — every hook is just a shell script calling `memsearch` subcommands. Here's what's available:
+
+| Command | Used by | What it does |
+|---------|---------|-------------|
+| `search <query>` | UserPromptSubmit hook | Semantic search over indexed memories (`-k` for top-K, `-j` for JSON) |
+| `watch <paths>` | SessionStart hook | Background watcher that auto-indexes on file changes (debounced) |
+| `index <paths>` | Manual / rebuild | One-shot index of markdown files (`--force` to re-index all) |
+| `expand <chunk_hash>` | Agent (L2 disclosure) | Show full markdown section around a chunk, with anchor metadata |
+| `transcript <jsonl>` | Agent (L3 disclosure) | Parse Claude Code JSONL transcript into readable conversation turns |
+| `flush` | Manual | LLM-powered compression of old memories into summaries |
+| `config init\|list\|get\|set` | Quick Start | Interactive config wizard, view/modify settings |
+| `stats` | Manual | Show index statistics (collection size, chunk count) |
+| `reset` | Manual | Drop all indexed data (requires `--yes` to confirm) |
+
+The progressive disclosure commands (`expand` and `transcript`) are the main interaction point for the Claude agent — details below.
 
 ### `memsearch expand <chunk_hash>`
 
