@@ -37,11 +37,11 @@ Commands:
 | `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
 | `memsearch expand` | Progressive disclosure L2: show full section around a chunk 🔌 |
 | `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript 🔌 |
-
-> 🔌 Commands marked with 🔌 are designed for the [Claude Code plugin](../ccplugin/README.md)'s progressive disclosure workflow, but work as standalone CLI tools too.
 | `memsearch config` | Initialize, view, and modify configuration |
 | `memsearch stats` | Display index statistics (total chunk count) |
 | `memsearch reset` | Drop all indexed data from the Milvus collection |
+
+> 🔌 Commands marked with 🔌 are designed for the [Claude Code plugin](../ccplugin/README.md)'s progressive disclosure workflow, but work as standalone CLI tools too.
 
 ---
 
