@@ -17,7 +17,7 @@ $ pip install "memsearch[google]"      # Google Gemini embeddings
 $ pip install "memsearch[voyage]"      # Voyage AI embeddings
 $ pip install "memsearch[ollama]"      # Ollama (local, no API key)
 $ pip install "memsearch[local]"       # sentence-transformers (local, no API key)
-$ pip install "memsearch[anthropic]"   # Anthropic (for flush/summarization LLM)
+$ pip install "memsearch[anthropic]"   # Anthropic (for compact/summarization LLM)
 $ pip install "memsearch[all]"         # Everything above
 ```
 
@@ -295,13 +295,13 @@ Set the environment variable for your chosen embedding provider. memsearch reads
 | Voyage AI | `VOYAGE_API_KEY` | Requires `memsearch[voyage]` |
 | Ollama | `OLLAMA_HOST` (optional) | Defaults to `http://localhost:11434` |
 | Local (sentence-transformers) | -- | No API key needed |
-| Anthropic | `ANTHROPIC_API_KEY` | Used by `flush` summarization only |
+| Anthropic | `ANTHROPIC_API_KEY` | Used by `compact` summarization only |
 
 ```bash
 $ export OPENAI_API_KEY="sk-..."         # OpenAI embeddings (default)
 $ export GOOGLE_API_KEY="..."            # Google Gemini embeddings
 $ export VOYAGE_API_KEY="..."            # Voyage AI embeddings
-$ export ANTHROPIC_API_KEY="..."         # Anthropic (for flush summarization)
+$ export ANTHROPIC_API_KEY="..."         # Anthropic (for compact summarization)
 ```
 
 ---
@@ -472,7 +472,7 @@ overlap_lines = 2
 [watch]
 debounce_ms = 1500
 
-[flush]
+[compact]
 llm_provider = "openai"
 llm_model = ""
 prompt_file = ""

@@ -1,4 +1,4 @@
-"""Memory flush — compress and summarize chunks using an LLM.
+"""Memory compact — compress and summarize chunks using an LLM.
 
 Supports OpenAI (default), Anthropic, and Gemini as LLM backends.
 API keys are read from environment variables:
@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-FLUSH_PROMPT = """\
+COMPACT_PROMPT = """\
 You are a knowledge compression assistant. Given the following chunks of text \
 from a knowledge base, create a concise but comprehensive summary that preserves \
 all key facts, decisions, code patterns, and actionable insights.
@@ -24,7 +24,7 @@ Write a clear, well-structured markdown summary. Use headings and bullet points.
 Preserve technical details, code snippets, and specific decisions."""
 
 
-async def flush_chunks(
+async def compact_chunks(
     chunks: list[dict[str, Any]],
     *,
     llm_provider: str = "openai",
@@ -43,7 +43,7 @@ async def flush_chunks(
         Override the default model for the provider.
     prompt_template:
         Custom prompt template.  Must contain ``{chunks}`` placeholder.
-        Defaults to the built-in ``FLUSH_PROMPT``.
+        Defaults to the built-in ``COMPACT_PROMPT``.
 
     Returns
     -------
@@ -51,15 +51,15 @@ async def flush_chunks(
         The compressed summary markdown.
     """
     combined = "\n\n---\n\n".join(c["content"] for c in chunks)
-    template = prompt_template or FLUSH_PROMPT
+    template = prompt_template or COMPACT_PROMPT
     prompt = template.format(chunks=combined)
 
     if llm_provider == "openai":
-        return await _flush_openai(prompt, model or "gpt-4o-mini")
+        return await _compact_openai(prompt, model or "gpt-4o-mini")
     elif llm_provider == "anthropic":
-        return await _flush_anthropic(prompt, model or "claude-sonnet-4-5-20250929")
+        return await _compact_anthropic(prompt, model or "claude-sonnet-4-5-20250929")
     elif llm_provider == "gemini":
-        return await _flush_gemini(prompt, model or "gemini-2.0-flash")
+        return await _compact_gemini(prompt, model or "gemini-2.0-flash")
     else:
         raise ValueError(
             f"Unknown LLM provider {llm_provider!r}. "
@@ -67,7 +67,7 @@ async def flush_chunks(
         )
 
 
-async def _flush_openai(prompt: str, model: str) -> str:
+async def _compact_openai(prompt: str, model: str) -> str:
     import openai
 
     kwargs: dict = {}
@@ -84,7 +84,7 @@ async def _flush_openai(prompt: str, model: str) -> str:
     return resp.choices[0].message.content or ""
 
 
-async def _flush_anthropic(prompt: str, model: str) -> str:
+async def _compact_anthropic(prompt: str, model: str) -> str:
     import anthropic
 
     client = anthropic.AsyncAnthropic()  # reads ANTHROPIC_API_KEY
@@ -96,7 +96,7 @@ async def _flush_anthropic(prompt: str, model: str) -> str:
     return resp.content[0].text
 
 
-async def _flush_gemini(prompt: str, model: str) -> str:
+async def _compact_gemini(prompt: str, model: str) -> str:
     from google import genai
 
     client = genai.Client()  # reads GOOGLE_API_KEY

@@ -18,7 +18,7 @@ Options:
 Commands:
   config      Manage memsearch configuration.
   expand      Expand a memory chunk to show full context.
-  flush       Compress stored memories into a summary.
+  compact     Compress stored memories into a summary.
   index       Index markdown files from PATHS.
   reset       Drop all indexed data.
   search      Search indexed memory for QUERY.
@@ -34,7 +34,7 @@ Commands:
 | `memsearch index` | Scan directories and index markdown files into the vector store |
 | `memsearch search` | Semantic search across indexed chunks using natural language |
 | `memsearch watch` | Monitor directories and auto-index on file changes |
-| `memsearch flush` | Compress indexed chunks into an LLM-generated summary |
+| `memsearch compact` | Compress indexed chunks into an LLM-generated summary |
 | `memsearch expand` | Progressive disclosure L2: show full section around a chunk |
 | `memsearch transcript` | Progressive disclosure L3: view turns from a JSONL transcript |
 | `memsearch config` | Initialize, view, and modify configuration |
@@ -223,7 +223,7 @@ Watching 2 path(s) for changes... (Ctrl+C to stop)
 
 ---
 
-## `memsearch flush`
+## `memsearch compact`
 
 Use an LLM to compress all indexed chunks (or a subset) into a condensed markdown summary. The summary is appended to a daily log file at `memory/YYYY-MM-DD.md` inside the first configured path, keeping markdown as the single source of truth.
 
@@ -231,7 +231,7 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--source` | `-s` | *(all chunks)* | Only flush chunks from this specific source file |
+| `--source` | `-s` | *(all chunks)* | Only compact chunks from this specific source file |
 | `--llm-provider` | | `openai` | LLM backend for summarization (`openai`, `anthropic`, `gemini`) |
 | `--llm-model` | | provider default | Override the LLM model |
 | `--prompt` | | built-in template | Custom prompt template string (must contain `{chunks}` placeholder) |
@@ -252,11 +252,11 @@ Use an LLM to compress all indexed chunks (or a subset) into a condensed markdow
 
 ### Examples
 
-Flush all chunks using the default LLM (OpenAI):
+Compact all chunks using the default LLM (OpenAI):
 
 ```bash
-$ memsearch flush
-Flush complete. Summary:
+$ memsearch compact
+Compact complete. Summary:
 
 ## Key Decisions
 - Use Redis for session caching with 5-minute TTL
@@ -264,11 +264,11 @@ Flush complete. Summary:
 ...
 ```
 
-Flush only chunks from a specific source file:
+Compact only chunks from a specific source file:
 
 ```bash
-$ memsearch flush --source ./docs/old-notes.md
-Flush complete. Summary:
+$ memsearch compact --source ./docs/old-notes.md
+Compact complete. Summary:
 
 ## Old Notes Summary
 - Initial architecture decisions from January meeting...
@@ -277,19 +277,19 @@ Flush complete. Summary:
 Use Anthropic Claude for summarization:
 
 ```bash
-$ memsearch flush --llm-provider anthropic
+$ memsearch compact --llm-provider anthropic
 ```
 
 Use a custom prompt template:
 
 ```bash
-$ memsearch flush --prompt "Summarize these notes into action items:\n{chunks}"
+$ memsearch compact --prompt "Summarize these notes into action items:\n{chunks}"
 ```
 
 Use a prompt file for complex templates:
 
 ```bash
-$ memsearch flush --prompt-file ./prompts/compress.txt
+$ memsearch compact --prompt-file ./prompts/compress.txt
 ```
 
 ### Notes
@@ -483,7 +483,7 @@ Writing to: /home/user/.memsearch/config.toml
 -- Watch --
   Debounce (ms) [1500]:
 
--- Flush --
+-- Compact --
   LLM provider [openai]:
   LLM model (empty for default) []:
   Prompt file path (empty for built-in) []:
@@ -566,7 +566,7 @@ overlap_lines = 2
 [watch]
 debounce_ms = 1500
 
-[flush]
+[compact]
 llm_provider = "openai"
 llm_model = ""
 prompt_file = ""
@@ -595,9 +595,9 @@ provider = "openai"
 | `chunking.max_chunk_size` | int | `1500` | Maximum chunk size in characters |
 | `chunking.overlap_lines` | int | `2` | Number of overlapping lines between adjacent chunks |
 | `watch.debounce_ms` | int | `1500` | File watcher debounce delay in milliseconds |
-| `flush.llm_provider` | string | `openai` | LLM provider for flush summarization |
-| `flush.llm_model` | string | `""` | Override LLM model (empty = provider default) |
-| `flush.prompt_file` | string | `""` | Path to a custom prompt template file |
+| `compact.llm_provider` | string | `openai` | LLM provider for compact summarization |
+| `compact.llm_model` | string | `""` | Override LLM model (empty = provider default) |
+| `compact.prompt_file` | string | `""` | Path to a custom prompt template file |
 
 ---
 
@@ -683,11 +683,11 @@ memsearch reads API keys and configuration overrides from environment variables.
 
 | Variable | Required By | Description |
 |----------|-------------|-------------|
-| `OPENAI_API_KEY` | `openai` embedding provider, `openai` LLM flush provider | OpenAI API key |
+| `OPENAI_API_KEY` | `openai` embedding provider, `openai` LLM compact provider | OpenAI API key |
 | `OPENAI_BASE_URL` | *(optional)* | Override the OpenAI API base URL (for proxies or compatible APIs) |
-| `GOOGLE_API_KEY` | `google` embedding provider, `gemini` LLM flush provider | Google AI API key |
+| `GOOGLE_API_KEY` | `google` embedding provider, `gemini` LLM compact provider | Google AI API key |
 | `VOYAGE_API_KEY` | `voyage` embedding provider | Voyage AI API key |
-| `ANTHROPIC_API_KEY` | `anthropic` LLM flush provider | Anthropic API key |
+| `ANTHROPIC_API_KEY` | `anthropic` LLM compact provider | Anthropic API key |
 | `OLLAMA_HOST` | `ollama` embedding provider *(optional)* | Ollama server URL (default: `http://localhost:11434`) |
 
 ### Configuration Overrides
@@ -704,9 +704,9 @@ All configuration keys can be set via environment variables using the pattern `M
 | `MEMSEARCH_CHUNKING_MAX_CHUNK_SIZE` | `chunking.max_chunk_size` | Max chunk size (chars) |
 | `MEMSEARCH_CHUNKING_OVERLAP_LINES` | `chunking.overlap_lines` | Overlap lines between chunks |
 | `MEMSEARCH_WATCH_DEBOUNCE_MS` | `watch.debounce_ms` | Debounce delay (ms) |
-| `MEMSEARCH_FLUSH_LLM_PROVIDER` | `flush.llm_provider` | LLM provider for flush |
-| `MEMSEARCH_FLUSH_LLM_MODEL` | `flush.llm_model` | LLM model for flush |
-| `MEMSEARCH_FLUSH_PROMPT_FILE` | `flush.prompt_file` | Path to custom prompt file |
+| `MEMSEARCH_COMPACT_LLM_PROVIDER` | `compact.llm_provider` | LLM provider for compact |
+| `MEMSEARCH_COMPACT_LLM_MODEL` | `compact.llm_model` | LLM model for compact |
+| `MEMSEARCH_COMPACT_PROMPT_FILE` | `compact.prompt_file` | Path to custom prompt file |
 
 ### Examples
 
@@ -719,10 +719,10 @@ $ memsearch search "database schema"
 $ export MEMSEARCH_MILVUS_URI=http://10.0.0.5:19530
 $ memsearch index ./docs/
 
-# Use Google for embedding via env var, Anthropic for flush via CLI
+# Use Google for embedding via env var, Anthropic for compact via CLI
 $ export MEMSEARCH_EMBEDDING_PROVIDER=google
 $ export GOOGLE_API_KEY=AIza...
-$ memsearch flush --llm-provider anthropic
+$ memsearch compact --llm-provider anthropic
 ```
 
 ### Embedding Provider Reference

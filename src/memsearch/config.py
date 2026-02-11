@@ -35,7 +35,7 @@ class EmbeddingConfig:
 
 
 @dataclass
-class FlushConfig:
+class CompactConfig:
     llm_provider: str = "openai"
     llm_model: str = ""
     prompt_file: str = ""
@@ -56,7 +56,7 @@ class WatchConfig:
 class MemSearchConfig:
     milvus: MilvusConfig = field(default_factory=MilvusConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
-    flush: FlushConfig = field(default_factory=FlushConfig)
+    compact: CompactConfig = field(default_factory=CompactConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
 
@@ -65,7 +65,7 @@ class MemSearchConfig:
 _SECTION_CLASSES: dict[str, type] = {
     "milvus": MilvusConfig,
     "embedding": EmbeddingConfig,
-    "flush": FlushConfig,
+    "compact": CompactConfig,
     "chunking": ChunkingConfig,
     "watch": WatchConfig,
 }

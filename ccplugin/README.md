@@ -218,7 +218,7 @@ This plugin is built entirely on the [`memsearch`](../README.md) CLI — every h
 | `index <paths>` | Manual / rebuild | One-shot index of markdown files (`--force` to re-index all) |
 | `expand <chunk_hash>` | Agent (L2 disclosure) | Show full markdown section around a chunk, with anchor metadata |
 | `transcript <jsonl>` | Agent (L3 disclosure) | Parse Claude Code JSONL transcript into readable conversation turns |
-| `flush` | Manual | LLM-powered compression of old memories into summaries |
+| `compact` | Manual | LLM-powered compression of old memories into summaries |
 | `config init\|list\|get\|set` | Quick Start | Interactive config wizard, view/modify settings |
 | `stats` | Manual | Show index statistics (collection size, chunk count) |
 | `reset` | Manual | Drop all indexed data (requires `--yes` to confirm) |

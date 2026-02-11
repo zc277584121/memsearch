@@ -44,7 +44,7 @@ memsearch follows [OpenClaw](https://github.com/openclaw/openclaw)'s memory arch
 | Memory layout | `MEMORY.md` + `memory/YYYY-MM-DD.md` | Same |
 | Chunk ID format | `hash(source:startLine:endLine:contentHash:model)` | Same |
 | Dedup strategy | Content-hash primary key | Same |
-| Flush target | Append to daily markdown log | Same |
+| Compact target | Append to daily markdown log | Same |
 | Source of truth | Markdown files (vector DB is derived) | Same |
 | File watch debounce | 1500ms | Same default |
 
@@ -81,14 +81,14 @@ graph LR
     D -->|stale| DEL[Delete from Milvus]
 ```
 
-### Watch and Flush
+### Watch and Compact
 
-The file watcher monitors directories for markdown changes and automatically re-indexes modified files. The flush operation compresses indexed chunks into an LLM-generated summary and writes it back to a daily markdown log -- which the watcher then picks up and indexes, closing the loop.
+The file watcher monitors directories for markdown changes and automatically re-indexes modified files. The compact operation compresses indexed chunks into an LLM-generated summary and writes it back to a daily markdown log -- which the watcher then picks up and indexes, closing the loop.
 
 ```mermaid
 graph LR
     W[File Watcher] -->|1500ms debounce| I[Auto re-index]
-    FL[Flush] --> L[LLM Summarize] --> MD["memory/YYYY-MM-DD.md"]
+    FL[Compact] --> L[LLM Summarize] --> MD["memory/YYYY-MM-DD.md"]
     MD -.->|triggers| W
 ```
 
@@ -273,7 +273,7 @@ collection = "memsearch_chunks"
 provider = "openai"
 model = ""                           # empty = provider default
 
-[flush]
+[compact]
 llm_provider = "openai"
 llm_model = ""                       # empty = provider default
 prompt_file = ""                     # custom prompt template path
@@ -319,9 +319,9 @@ graph TB
     style MIL fill:#2a3a5c,stroke:#6ba3d6,color:#a8b2c1
 ```
 
-### The Flush Cycle
+### The Compact Cycle
 
-The flush operation creates a feedback loop that keeps the knowledge base compact:
+The compact operation creates a feedback loop that keeps the knowledge base compact:
 
 ```mermaid
 graph LR
@@ -363,7 +363,7 @@ Data is transmitted externally only when you explicitly choose a remote componen
 |-----------|-------------|---------------|
 | Vector store | Milvus Lite (default) | Milvus Server, Zilliz Cloud |
 | Embeddings | `local`, `ollama` | `openai`, `google`, `voyage` |
-| Flush LLM | Ollama (local) | OpenAI, Anthropic, Gemini |
+| Compact LLM | Ollama (local) | OpenAI, Anthropic, Gemini |
 
 ### API Key Handling
 

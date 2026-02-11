@@ -31,7 +31,7 @@ def test_default_config():
     assert cfg.chunking.max_chunk_size == 1500
     assert cfg.chunking.overlap_lines == 2
     assert cfg.watch.debounce_ms == 1500
-    assert cfg.flush.llm_provider == "openai"
+    assert cfg.compact.llm_provider == "openai"
 
 
 def test_load_toml_file(tmp_path: Path):

@@ -15,7 +15,7 @@
 - 🦞 **OpenClaw's memory, everywhere** — OpenClaw has one of the best memory designs in open-source AI: **markdown as the single source of truth** — simple, human-readable, `git`-friendly, zero vendor lock-in
 - ⚡ **Smart dedup** — SHA-256 content hashing means unchanged content is never re-embedded
 - 🔄 **Live sync** — File watcher auto-indexes on changes, deletes stale chunks when files are removed
-- 🧹 **Memory flush** — LLM-powered summarization compresses old memories, just like OpenClaw's flush cycle
+- 🧹 **Memory compact** — LLM-powered summarization compresses old memories, just like OpenClaw's compact cycle
 - 🧩 **Claude Code plugin included** — A real-world example: **[ccplugin/](ccplugin/README.md)** gives Claude persistent memory across sessions with zero config
 
 ## 🔍 How It Works
@@ -56,7 +56,7 @@
   │  File watcher (1500ms debounce) ──▶ auto re-index / delete stale  │
   └────────────────────────────────────────────────────────────────────┘
 
-  ┌─── Flush ──────────────────────────────────────────────────────────┐
+  ┌─── Compact ─────────────────────────────────────────────────────────┐
   │  Retrieve chunks ──▶ LLM summarize ──▶ write memory/YYYY-MM-DD.md │
   └────────────────────────────────────────────────────────────────────┘
 ```
@@ -344,19 +344,19 @@ memsearch watch ./docs/ ./notes/
 memsearch watch ./docs/ --debounce-ms 3000
 ```
 
-### Flush (compress memories)
+### Compact (compress memories)
 
 Summarize indexed chunks into a condensed memory using an LLM:
 
 ```bash
-memsearch flush
+memsearch compact
 
 # Use a specific LLM
-memsearch flush --llm-provider anthropic
-memsearch flush --llm-provider gemini
+memsearch compact --llm-provider anthropic
+memsearch compact --llm-provider gemini
 
-# Only flush chunks from a specific source
-memsearch flush --source ./docs/old-notes.md
+# Only compact chunks from a specific source
+memsearch compact --source ./docs/old-notes.md
 ```
 
 ### Configuration management
@@ -398,8 +398,8 @@ export OPENAI_BASE_URL="https://..."   # optional, for proxies / Azure
 export GOOGLE_API_KEY="..."
 export VOYAGE_API_KEY="..."
 
-# LLM for flush/summarization (set the one you use)
-export ANTHROPIC_API_KEY="..."         # for flush with Anthropic
+# LLM for compact/summarization (set the one you use)
+export ANTHROPIC_API_KEY="..."         # for compact with Anthropic
 ```
 
 ## 🔌 Embedding Providers
@@ -421,7 +421,7 @@ memsearch is designed to be a drop-in memory backend for projects following [Ope
 | Memory layout | `MEMORY.md` + `memory/YYYY-MM-DD.md` | ✅ Same |
 | Chunk ID format | `hash(source:startLine:endLine:contentHash:model)` | ✅ Same |
 | Dedup strategy | Content-hash primary key | ✅ Same |
-| Flush target | Append to daily markdown log | ✅ Same |
+| Compact target | Append to daily markdown log | ✅ Same |
 | Source of truth | Markdown files (vector DB is derived) | ✅ Same |
 | File watch debounce | 1500ms | ✅ Same default |
 | Vector backend | Built-in | Milvus (Lite / Server / Zilliz Cloud) |

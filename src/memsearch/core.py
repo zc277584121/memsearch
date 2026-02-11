@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from .chunker import Chunk, chunk_markdown, compute_chunk_id
 from .embeddings import EmbeddingProvider, get_provider
-from .flush import flush_chunks
+from .compact import compact_chunks
 from .scanner import ScannedFile, scan_paths
 from .store import MilvusStore
 
@@ -195,10 +195,10 @@ class MemSearch:
         return self._store.search(embeddings[0], query_text=query, top_k=top_k)
 
     # ------------------------------------------------------------------
-    # Flush (compress memories)
+    # Compact (compress memories)
     # ------------------------------------------------------------------
 
-    async def flush(
+    async def compact(
         self,
         *,
         source: str | None = None,
@@ -217,7 +217,7 @@ class MemSearch:
         Parameters
         ----------
         source:
-            If given, only flush chunks from this source file.
+            If given, only compact chunks from this source file.
         llm_provider:
             LLM backend for summarization.
         llm_model:
@@ -226,7 +226,7 @@ class MemSearch:
             Custom prompt template for the LLM.  Must contain a
             ``{chunks}`` placeholder.  Defaults to the built-in prompt.
         output_dir:
-            Directory to write the flush file into.  Defaults to the
+            Directory to write the compact file into.  Defaults to the
             first entry in *paths*.
 
         Returns
@@ -239,7 +239,7 @@ class MemSearch:
         if not all_chunks:
             return ""
 
-        summary = await flush_chunks(
+        summary = await compact_chunks(
             all_chunks, llm_provider=llm_provider, model=llm_model,
             prompt_template=prompt_template,
         )
@@ -248,18 +248,18 @@ class MemSearch:
         base = Path(output_dir) if output_dir else Path(self._paths[0]) if self._paths else Path.cwd()
         memory_dir = base / "memory"
         memory_dir.mkdir(parents=True, exist_ok=True)
-        flush_file = memory_dir / f"{date.today()}.md"
-        flush_heading = f"\n\n## Memory Flush\n\n"
-        with open(flush_file, "a", encoding="utf-8") as f:
-            if flush_file.stat().st_size == 0:
+        compact_file = memory_dir / f"{date.today()}.md"
+        compact_heading = f"\n\n## Memory Compact\n\n"
+        with open(compact_file, "a", encoding="utf-8") as f:
+            if compact_file.stat().st_size == 0:
                 f.write(f"# {date.today()}\n")
-            f.write(flush_heading)
+            f.write(compact_heading)
             f.write(summary)
             f.write("\n")
 
         # Index the updated file immediately
-        n = await self.index_file(flush_file)
-        logger.info("Flushed %d chunks into %s (%d new chunks indexed)", len(all_chunks), flush_file, n)
+        n = await self.index_file(compact_file)
+        logger.info("Compacted %d chunks into %s (%d new chunks indexed)", len(all_chunks), compact_file, n)
         return summary
 
     # ------------------------------------------------------------------

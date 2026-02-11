@@ -35,9 +35,9 @@ _PARAM_MAP = {
     "collection": "milvus.collection",
     "milvus_uri": "milvus.uri",
     "milvus_token": "milvus.token",
-    "llm_provider": "flush.llm_provider",
-    "llm_model": "flush.llm_model",
-    "prompt_file": "flush.prompt_file",
+    "llm_provider": "compact.llm_provider",
+    "llm_model": "compact.llm_model",
+    "prompt_file": "compact.prompt_file",
     "max_chunk_size": "chunking.max_chunk_size",
     "overlap_lines": "chunking.overlap_lines",
     "debounce_ms": "watch.debounce_ms",
@@ -389,13 +389,13 @@ def watch(
 
 
 @cli.command()
-@click.option("--source", "-s", default=None, help="Only flush chunks from this source.")
+@click.option("--source", "-s", default=None, help="Only compact chunks from this source.")
 @click.option("--llm-provider", default=None, help="LLM for summarization.")
 @click.option("--llm-model", default=None, help="Override LLM model.")
 @click.option("--prompt", default=None, help="Custom prompt template (must contain {chunks}).")
 @click.option("--prompt-file", default=None, type=click.Path(exists=True), help="Read prompt template from file.")
 @_common_options
-def flush(
+def compact(
     source: str | None,
     llm_provider: str | None,
     llm_model: str | None,
@@ -418,22 +418,22 @@ def flush(
     ))
 
     prompt_template = prompt
-    if cfg.flush.prompt_file and not prompt_template:
-        prompt_template = Path(cfg.flush.prompt_file).read_text(encoding="utf-8")
+    if cfg.compact.prompt_file and not prompt_template:
+        prompt_template = Path(cfg.compact.prompt_file).read_text(encoding="utf-8")
 
     ms = MemSearch(**_cfg_to_memsearch_kwargs(cfg))
     try:
-        summary = _run(ms.flush(
+        summary = _run(ms.compact(
             source=source,
-            llm_provider=cfg.flush.llm_provider,
-            llm_model=cfg.flush.llm_model or None,
+            llm_provider=cfg.compact.llm_provider,
+            llm_model=cfg.compact.llm_model or None,
             prompt_template=prompt_template,
         ))
         if summary:
-            click.echo("Flush complete. Summary:\n")
+            click.echo("Compact complete. Summary:\n")
             click.echo(summary)
         else:
-            click.echo("No chunks to flush.")
+            click.echo("No chunks to compact.")
     finally:
         ms.close()
 
@@ -558,17 +558,17 @@ def config_init(project: bool) -> None:
         "  Debounce (ms)", default=current.watch.debounce_ms, type=int,
     )
 
-    # Flush
-    click.echo("\n── Flush ──")
-    result["flush"] = {}
-    result["flush"]["llm_provider"] = click.prompt(
-        "  LLM provider", default=current.flush.llm_provider,
+    # Compact
+    click.echo("\n── Compact ──")
+    result["compact"] = {}
+    result["compact"]["llm_provider"] = click.prompt(
+        "  LLM provider", default=current.compact.llm_provider,
     )
-    result["flush"]["llm_model"] = click.prompt(
-        "  LLM model (empty for default)", default=current.flush.llm_model,
+    result["compact"]["llm_model"] = click.prompt(
+        "  LLM model (empty for default)", default=current.compact.llm_model,
     )
-    result["flush"]["prompt_file"] = click.prompt(
-        "  Prompt file path (empty for built-in)", default=current.flush.prompt_file,
+    result["compact"]["prompt_file"] = click.prompt(
+        "  Prompt file path (empty for built-in)", default=current.compact.prompt_file,
     )
 
     save_config(result, target)

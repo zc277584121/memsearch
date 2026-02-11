@@ -18,7 +18,7 @@ The vector store is just a derived index — rebuildable anytime.
 - **OpenClaw's memory, everywhere** -- markdown as the single source of truth
 - **Smart dedup** -- SHA-256 content hashing means unchanged content is never re-embedded
 - **Live sync** -- file watcher auto-indexes on changes, deletes stale chunks
-- **Memory flush** -- LLM-powered summarization compresses old memories
+- **Memory compact** -- LLM-powered summarization compresses old memories
 - **Claude Code plugin included** -- persistent memory across sessions with zero config
 
 ---
