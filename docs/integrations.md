@@ -1,13 +1,15 @@
 # Integrations
 
-memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **LangChain** and **LangGraph**.
+memsearch is a plain Python library -- it works with any framework. This page shows ready-made patterns for **LangChain**, **LangGraph**, **LlamaIndex**, and **CrewAI**.
 
 !!! note "Prerequisites"
-    The examples below require additional packages:
+    Each integration requires its own packages:
 
     ```bash
     $ pip install langchain langchain-openai    # LangChain examples
     $ pip install langgraph                      # LangGraph agent example
+    $ pip install llama-index-core              # LlamaIndex example
+    $ pip install crewai                         # CrewAI example
     ```
 
 ---
@@ -146,3 +148,115 @@ for msg in result["messages"]:
 ```
 
 The agent will autonomously decide when to call `search_memory` based on the user's question -- no manual retrieval logic needed.
+
+---
+
+## LlamaIndex
+
+### As a Retriever
+
+Implement a LlamaIndex [`BaseRetriever`](https://docs.llamaindex.ai/en/stable/api_reference/retrievers/) that delegates to memsearch. Results are returned as `NodeWithScore` objects that work with any LlamaIndex query engine or pipeline.
+
+```python
+import asyncio
+from typing import List
+from memsearch import MemSearch
+from llama_index.core.retrievers import BaseRetriever
+from llama_index.core.schema import NodeWithScore, TextNode, QueryBundle
+
+
+class MemSearchRetriever(BaseRetriever):
+    """LlamaIndex retriever backed by memsearch."""
+
+    def __init__(self, mem: MemSearch, top_k: int = 5) -> None:
+        self._mem = mem
+        self._top_k = top_k
+        super().__init__()
+
+    def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
+        results = asyncio.run(
+            self._mem.search(query_bundle.query_str, top_k=self._top_k)
+        )
+        return [
+            NodeWithScore(
+                node=TextNode(
+                    text=r["content"],
+                    metadata={"source": r["source"], "heading": r["heading"]},
+                ),
+                score=r["score"],
+            )
+            for r in results
+        ]
+```
+
+Use it like any other LlamaIndex retriever:
+
+```python
+mem = MemSearch(paths=["./memory/"])
+asyncio.run(mem.index())
+
+retriever = MemSearchRetriever(mem=mem, top_k=3)
+nodes = retriever.retrieve("Redis caching")
+for n in nodes:
+    print(f"[{n.score:.4f}] {n.node.metadata['source']} — {n.node.text[:100]}")
+```
+
+Plug it into a `RetrieverQueryEngine` for end-to-end RAG (requires an LLM provider like `llama-index-llms-openai`):
+
+```python
+from llama_index.core.query_engine import RetrieverQueryEngine
+
+query_engine = RetrieverQueryEngine.from_args(retriever)
+response = query_engine.query("what caching solution are we using?")
+print(response)
+```
+
+---
+
+## CrewAI
+
+### As a Tool (Multi-Agent Crew)
+
+Register memsearch as a [CrewAI tool](https://docs.crewai.com/en/concepts/tools) so any agent in the crew can search the knowledge base:
+
+```python
+import asyncio
+from memsearch import MemSearch
+from crewai import Agent, Task, Crew
+from crewai.tools import tool
+
+mem = MemSearch(paths=["./memory/"])
+asyncio.run(mem.index())
+
+
+@tool("search_memory")
+def search_memory(query: str) -> str:
+    """Search the team's knowledge base for relevant information."""
+    results = asyncio.run(mem.search(query, top_k=3))
+    if not results:
+        return "No relevant memories found."
+    return "\n\n".join(
+        f"[{r['source']}] {r['heading']}: {r['content'][:300]}"
+        for r in results
+    )
+
+
+researcher = Agent(
+    role="Knowledge Base Researcher",
+    goal="Find relevant information from the team's knowledge base",
+    backstory="You are a researcher who searches the team's knowledge base to answer questions.",
+    tools=[search_memory],
+)
+
+research_task = Task(
+    description="Who is the frontend lead and what did they work on recently?",
+    expected_output="A short summary mentioning the frontend lead's name and recent work.",
+    agent=researcher,
+)
+
+crew = Crew(agents=[researcher], tasks=[research_task])
+result = crew.kickoff()
+print(result)
+```
+
+The agent will automatically call `search_memory` to look up the answer before responding.
