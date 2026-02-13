@@ -4,6 +4,74 @@
 
 The plugin is built entirely on Claude Code's own primitives: **Hooks** for lifecycle events, **CLI** for tool access, and **Agent** for autonomous decisions. No MCP servers, no sidecar services, no extra network round-trips. Everything runs locally as shell scripts and a Python CLI.
 
+### How the pieces fit together
+
+```mermaid
+graph LR
+    subgraph "memsearch (Python library)"
+        LIB[Core: chunker, embeddings,<br/>vector store, scanner]
+    end
+
+    subgraph "memsearch CLI"
+        CLI["CLI commands:<br/>search · index · watch<br/>expand · transcript · config"]
+    end
+
+    subgraph "Claude Code Plugin (ccplugin)"
+        HOOKS["Shell hooks:<br/>SessionStart · UserPromptSubmit<br/>Stop · SessionEnd"]
+    end
+
+    LIB --> CLI
+    CLI --> HOOKS
+    HOOKS -->|"runs inside"| CC[Claude Code]
+
+    style LIB fill:#1a2744,stroke:#6ba3d6,color:#a8b2c1
+    style CLI fill:#1a2744,stroke:#e0976b,color:#a8b2c1
+    style HOOKS fill:#1a2744,stroke:#7bc67e,color:#a8b2c1
+    style CC fill:#2a1a44,stroke:#c97bdb,color:#a8b2c1
+```
+
+The **memsearch Python library** provides the core engine (chunking, embedding, vector storage, search). The **memsearch CLI** wraps the library into shell-friendly commands. The **Claude Code Plugin** ties those CLI commands to Claude Code's hook lifecycle — so everything happens automatically without user intervention.
+
+---
+
+## See It in Action
+
+Here is what a typical workflow looks like with the plugin installed:
+
+**Monday morning** — you ask Claude to set up a Redis caching layer:
+
+> *You:* "Add a Redis caching layer to the API with a 5-minute TTL."
+>
+> *Claude implements it. When the session ends, the plugin automatically summarizes and saves:*
+
+```markdown
+# .memsearch/memory/2026-02-10.md
+
+## Session 09:15
+### 09:15
+<!-- session:abc123 turn:def456 transcript:/.../abc123.jsonl -->
+- Added Redis caching middleware to API with 5-minute TTL
+- Used redis-py async client with connection pooling (max 10 connections)
+- Cache key format: `api:v1:{endpoint}:{hash(params)}`
+- Added cache hit/miss Prometheus counters for monitoring
+- Wrote integration tests with fakeredis
+```
+
+**Wednesday** — you are working on something else entirely, but mention performance:
+
+> *You:* "The `/orders` endpoint is slow, can we optimize it?"
+>
+> *Before Claude even starts thinking, the plugin injects:*
+
+```
+## Relevant Memories
+- [memory/2026-02-10.md:09:15]  Added Redis caching middleware to API
+  with 5-minute TTL. Used redis-py async client with connection pooling...
+  `chunk_hash: 7a3f9b21e4c08d56`
+```
+
+Claude now knows about the caching system you built on Monday — without you reminding it — and can suggest using it for the `/orders` endpoint.
+
 ---
 
 ## What It Does
@@ -170,12 +238,13 @@ This happens transparently -- no action from Claude or the user is required.
 
 ```
 ## Relevant Memories
-- [.memsearch/memory/2026-02-12.md:04:16]  使用远程 Milvus Server 测试
-  `claude -p` 模式，索引了 4 个 chunks，search 正常返回相关结果。确认
-  `claude -p` 模式不触发任何 hooks...
-  `chunk_hash: 47b5475122b992b6`
-- [.memsearch/memory/2026-02-11.md:11:02]  修复 watch 启动时不索引已有文件的
-  问题。ccplugin stop.sh 增加显式 memsearch index 调用...
+- [.memsearch/memory/2026-02-10.md:09:15]  Added Redis caching middleware
+  to API with 5-minute TTL. Used redis-py async client with connection
+  pooling (max 10 connections). Cache key format: api:v1:{endpoint}:...
+  `chunk_hash: 7a3f9b21e4c08d56`
+- [.memsearch/memory/2026-02-09.md:14:30]  Fixed N+1 query in order-service
+  by switching from lazy loading to selectinload. Reduced /orders response
+  time from 1.2s to 180ms...
   `chunk_hash: 31cbaf74856ad1ed`
 ```
 
@@ -186,31 +255,31 @@ The preview is enough for Claude to answer most follow-up questions. But when it
 When an L1 preview is not enough, Claude runs `memsearch expand` to retrieve the **full markdown section** surrounding a chunk:
 
 ```bash
-$ memsearch expand 47b5475122b992b6
+$ memsearch expand 7a3f9b21e4c08d56
 ```
 
 **Example output:**
 
 ```
-Source: .memsearch/memory/2026-02-12.md (lines 96-111)
-Heading: 04:16
-Session: 433f8bc3-a5a8-46a2-8285-71941dc96ad0
-Turn: 8ee6995b-2e7c-4e11-92e2-6f07fdfb55c7
-Transcript: /home/user/.claude/projects/.../433f8bc3...46a0.jsonl
+Source: .memsearch/memory/2026-02-10.md (lines 12-32)
+Heading: 09:15
+Session: abc123de-f456-7890-abcd-ef1234567890
+Turn: def456ab-cdef-1234-5678-90abcdef1234
+Transcript: /home/user/.claude/projects/.../abc123de...7890.jsonl
 
-### 04:13
-<!-- session:433f8bc3... turn:0a0df619... transcript:/.../433f8bc3...46a0.jsonl -->
-- `claude -p` 模式不触发 SessionStart 和 UserPromptSubmit hooks
-- hooks 依赖正常交互模式
-- Milvus Server 可用，连接到 http://10.100.30.11:19530 验证通过
-- 本地 Milvus Lite 测试完成，index 了 4 个 chunks
+### 08:50
+<!-- session:abc123de... turn:aaa11122... transcript:/.../abc123de...7890.jsonl -->
+- Set up project scaffolding for the new API service
+- Configured FastAPI with uvicorn, added health check endpoint
+- Connected to PostgreSQL via SQLAlchemy async engine
 
-### 04:16
-<!-- session:433f8bc3... turn:8ee6995b... transcript:/.../433f8bc3...46a0.jsonl -->
-- 使用远程 Milvus Server 测试 `claude -p` 模式，索引了 4 个 chunks
-- 确认 `claude -p` 模式不触发任何 hooks
-- 正确的测试方式应该用交互模式 `claude` 而非 `-p` 标志
-- 远程 Milvus Server 可用，collection stats 显示 0（已知的 flush 延迟问题）
+### 09:15
+<!-- session:abc123de... turn:def456ab... transcript:/.../abc123de...7890.jsonl -->
+- Added Redis caching middleware to API with 5-minute TTL
+- Used redis-py async client with connection pooling (max 10 connections)
+- Cache key format: `api:v1:{endpoint}:{hash(params)}`
+- Added cache hit/miss Prometheus counters for monitoring
+- Wrote integration tests with fakeredis
 ```
 
 Now Claude sees the full context including the neighboring `### 04:13` section. The embedded `<!-- session:... -->` anchors link to the original conversation -- if Claude needs to go even deeper, it moves to L3.
@@ -238,11 +307,11 @@ $ memsearch transcript /path/to/session.jsonl
 ```
 All turns (73):
 
-  6d6210b7-b84  15:15:14  Implement the following plan: ...              [20 tools]
-  3075ee94-0f6  15:20:10  这个ccplugin的例子还要讲要准备 API key...
-  8e45ce0d-9a0  15:23:16  /plugin install memsearch 后面要注释下...       [2 tools]
-  53f5cac3-6d9  15:27:07  claude-mem 链接好像打不开...                    [9 tools]
-  c708b40c-8f8  15:30:45  这些改动提交下push然后提个pr...                [10 tools]
+  6d6210b7-b84  08:50:14  Set up the project scaffolding for...          [12 tools]
+  3075ee94-0f6  09:05:22  Can you add a health check endpoint?
+  8e45ce0d-9a0  09:15:03  Add a Redis caching layer to the API...        [8 tools]
+  53f5cac3-6d9  09:32:41  The cache TTL should be configurable...         [3 tools]
+  c708b40c-8f8  09:45:18  Let's add Prometheus metrics for cache...      [10 tools]
 ```
 
 Each line shows the turn UUID prefix, timestamp, content preview, and how many tool calls occurred.
@@ -250,23 +319,27 @@ Each line shows the turn UUID prefix, timestamp, content preview, and how many t
 **Drill into a specific turn** with surrounding context:
 
 ```bash
-$ memsearch transcript /path/to/session.jsonl --turn 6d6210b7 --context 1
+$ memsearch transcript /path/to/session.jsonl --turn 8e45ce0d --context 1
 ```
 
 ```
-Showing 2 turns around 6d6210b7:
+Showing 2 turns around 8e45ce0d:
 
->>> [15:15:14] 6d6210b7
-Implement the following plan:
+>>> [09:05:22] 3075ee94
+Can you add a health check endpoint?
 
-# Plan: Slim down README, link to docs site
+**Assistant**: Sure, I'll add a `/health` endpoint that checks the database
+connection and returns the service version.
 
-## Context
-README 中 CLI Usage、Configuration、Embedding Providers 等章节与文档站
-内容高度重复。精简 README 保留核心亮点，详细内容链接到文档站。
-...
+>>> [09:15:03] 8e45ce0d
+Add a Redis caching layer to the API with a 5-minute TTL.
 
-**Assistant**: 现在我来看看文档站的锚点，确保链接正确。
+**Assistant**: I'll add Redis caching middleware. Let me first check
+your current dependencies and middleware setup.
+  [Read] requirements.txt
+  [Read] src/middleware/__init__.py
+  [Write] src/middleware/cache.py
+  [Edit] src/main.py — added cache middleware to app
 ```
 
 This recovers the full original conversation -- user messages, assistant responses, and tool call summaries -- so Claude can recall exactly what happened during a past session.
@@ -291,7 +364,7 @@ The transcript files are standard [JSON Lines](https://jsonlines.org/) -- one JS
   "timestamp": "2026-02-11T15:15:14.284Z",
   "message": {
     "role": "user",
-    "content": "Implement the following plan: ..."
+    "content": "Add a Redis caching layer to the API with a 5-minute TTL."
   }
 }
 ```
@@ -308,7 +381,7 @@ The transcript files are standard [JSON Lines](https://jsonlines.org/) -- one JS
   "message": {
     "role": "assistant",
     "content": [
-      {"type": "text", "text": "好的，让我开始编辑 README.md。"}
+      {"type": "text", "text": "I'll add Redis caching middleware. Let me check your current setup."}
     ]
   }
 }
@@ -330,7 +403,7 @@ The transcript files are standard [JSON Lines](https://jsonlines.org/) -- one JS
         "type": "tool_use",
         "id": "toolu_014CPfherKZMyYbbG5VT4dyX",
         "name": "Read",
-        "input": {"file_path": "/path/to/README.md"}
+        "input": {"file_path": "/path/to/src/middleware/__init__.py"}
       }
     ]
   }
@@ -352,7 +425,7 @@ The transcript files are standard [JSON Lines](https://jsonlines.org/) -- one JS
       {
         "type": "tool_result",
         "tool_use_id": "toolu_014CPfherKZMyYbbG5VT4dyX",
-        "content": "     1→# memsearch\n     2→\n     3→..."
+        "content": "     1→from .logging import LoggingMiddleware\n     2→\n     3→..."
       }
     ]
   }
