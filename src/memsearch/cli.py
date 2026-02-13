@@ -565,12 +565,21 @@ def config_init(project: bool) -> None:
     # Embedding
     click.echo("\n── Embedding ──")
     result["embedding"] = {}
+    _embedding_defaults = {
+        "openai": "text-embedding-3-small",
+        "google": "gemini-embedding-001",
+        "voyage": "voyage-3-lite",
+        "ollama": "nomic-embed-text",
+        "local": "all-MiniLM-L6-v2",
+    }
     result["embedding"]["provider"] = click.prompt(
         "  Provider (openai/google/voyage/ollama/local)",
         default=current.embedding.provider,
     )
+    _emb_provider = result["embedding"]["provider"]
+    _emb_model_default = current.embedding.model or _embedding_defaults.get(_emb_provider, "")
     result["embedding"]["model"] = click.prompt(
-        "  Model (empty for provider default)", default=current.embedding.model,
+        "  Model", default=_emb_model_default,
     )
 
     # Chunking
@@ -592,12 +601,19 @@ def config_init(project: bool) -> None:
 
     # Compact
     click.echo("\n── Compact ──")
+    _compact_defaults = {
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-sonnet-4-5-20250929",
+        "gemini": "gemini-2.0-flash",
+    }
     result["compact"] = {}
     result["compact"]["llm_provider"] = click.prompt(
-        "  LLM provider", default=current.compact.llm_provider,
+        "  LLM provider (openai/anthropic/gemini)", default=current.compact.llm_provider,
     )
+    _compact_provider = result["compact"]["llm_provider"]
+    _compact_model_default = current.compact.llm_model or _compact_defaults.get(_compact_provider, "")
     result["compact"]["llm_model"] = click.prompt(
-        "  LLM model (empty for default)", default=current.compact.llm_model,
+        "  LLM model", default=_compact_model_default,
     )
     result["compact"]["prompt_file"] = click.prompt(
         "  Prompt file path (empty for built-in)", default=current.compact.prompt_file,
