@@ -116,10 +116,8 @@ stateDiagram-v2
         UserInput --> SemanticSearch: UserPromptSubmit hook
         SemanticSearch --> InjectMemories: top-k results
         InjectMemories --> ClaudeResponds: Claude processes & replies
-        ClaudeResponds --> fork1
-        state fork1 <<fork>>
-        fork1 --> UserInput: next turn (non-blocking)
-        fork1 --> Summary: Stop hook (async background)
+        ClaudeResponds --> UserInput: next turn
+        ClaudeResponds --> Summary: Stop hook (async, non-blocking)
         Summary --> WriteMD: append to YYYY-MM-DD.md
     }
 
