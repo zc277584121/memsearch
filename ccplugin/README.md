@@ -43,7 +43,7 @@ sequenceDiagram
     participant You
     participant Claude as Claude Code
 
-    rect rgb(60, 30, 30)
+    rect rgb(255, 230, 230)
     note right of You: Without plugin
     You->>Claude: Monday: "Add Redis caching with 5min TTL"
     Claude->>You: ✅ Done — implements caching
@@ -52,7 +52,7 @@ sequenceDiagram
     Claude->>You: ❌ Suggests solutions from scratch<br/>(forgot about the Redis cache from Monday)
     end
 
-    rect rgb(20, 50, 30)
+    rect rgb(220, 245, 220)
     note right of You: With plugin
     You->>Claude: Monday: "Add Redis caching with 5min TTL"
     Claude->>You: ✅ Done — implements caching
