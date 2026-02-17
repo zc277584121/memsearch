@@ -15,6 +15,24 @@ if [ -z "$MEMSEARCH_CMD" ]; then
   _detect_memsearch
 fi
 
+# Guard: OpenAI API key is required for the default embedding provider.
+# If missing, write session heading but skip watch/search and warn the user.
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  ensure_memory_dir
+  TODAY=$(date +%Y-%m-%d)
+  NOW=$(date +%H:%M)
+  MEMORY_FILE="$MEMORY_DIR/$TODAY.md"
+  echo -e "\n## Session $NOW\n" >> "$MEMORY_FILE"
+
+  warn="**memsearch memory plugin** requires \`OPENAI_API_KEY\` to enable semantic memory search.\n\n"
+  warn+="1. Get a key at https://platform.openai.com/api-keys\n"
+  warn+="2. Export it: \`export OPENAI_API_KEY=sk-...\`\n"
+  warn+="\nMemory recording is active (writing to .md files), but search and indexing are disabled until the key is set."
+  json_warn=$(printf '%s' "$warn" | jq -Rs .)
+  echo "{\"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\", \"additionalContext\": $json_warn}}"
+  exit 0
+fi
+
 # Start memsearch watch as a singleton background process.
 # This is the ONLY place indexing is managed — all other hooks just write .md files.
 start_watch
