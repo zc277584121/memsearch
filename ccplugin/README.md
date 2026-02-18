@@ -158,7 +158,7 @@ Fires on every user prompt before Claude processes it. This hook:
 2. **Skips short prompts** (under 10 characters) — greetings and single words don't need memory hints.
 3. **Returns a lightweight hint.** Outputs `systemMessage: "[memsearch] Memory available"` — a visible one-liner that keeps Claude aware of the memory system without performing any search.
 
-The actual memory retrieval is handled by the **memory-recall skill** (see below), which Claude invokes automatically when it judges the user's question needs historical context.
+The actual memory retrieval is handled by the **[memory-recall skill](#how-the-skill-works)**, which Claude invokes automatically when it judges the user's question needs historical context.
 
 #### Stop
 
@@ -359,28 +359,27 @@ Each file contains session summaries in plain markdown:
 
 | Aspect | memsearch | claude-mem |
 |--------|-----------|------------|
-| **Architecture** | 4 shell hooks + 1 watch process | Node.js/Bun worker service + Express server + React UI |
-| **Integration** | Native hooks + CLI (zero IPC overhead) | MCP server (stdio); tool definitions permanently consume context window |
-| **Memory recall** | **Skill-based auto-recall** — Claude auto-invokes memory-recall skill in a forked subagent when context is needed | **Agent-driven** — Claude must explicitly call MCP `search` tool |
-| **Progressive disclosure** | **3-layer, skill-driven**: subagent autonomously handles search (L1), expand (L2), transcript (L3) and returns curated summary | **3-layer, all manual**: `search`, `timeline`, `get_observations` all require explicit tool calls |
-| **Session summary cost** | 1 `claude -p --model haiku` call, runs async | Observation on every tool use + session summary (more API calls at scale) |
-| **Vector backend** | [Milvus](https://milvus.io/) — hybrid search (dense + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25)), scales from embedded to distributed cluster | [Chroma](https://www.trychroma.com/) — dense only, limited scaling path |
-| **Storage format** | Transparent `.md` files — human-readable, git-friendly | Opaque SQLite + Chroma binary |
-| **Index sync** | `memsearch watch` singleton — auto-debounced background sync | Automatic observation writes, but no unified background sync |
-| **Data portability** | Copy `.memsearch/memory/*.md` and rebuild | Export from SQLite + Chroma |
-| **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js + Bun + MCP runtime |
-| **Context window cost** | Minimal — skill runs in forked context, only curated summary enters main context | MCP tool definitions always loaded + each tool call/result consumes context |
-| **Cost per session** | ~1 Haiku call for summary | Multiple Claude API calls for observation compression |
+| **Architecture** | 4 shell hooks + 1 skill + 1 watch process | 5 JS hooks + 1 skill + MCP tools + Express worker service (port 37777) + React viewer |
+| **Integration** | Native hooks + skill + CLI — no MCP, no sidecar service | Hooks + skill + MCP tools + HTTP worker service |
+| **Memory recall** | **Skill in forked subagent** — `memory-recall` runs in `context: fork`, intermediate results stay isolated from main context | **Skill + MCP hybrid** — `mem-search` skill for auto-recall, plus 5 MCP tools (`search`, `timeline`, `get_observations`, `save_memory`, ...) for explicit access |
+| **Progressive disclosure** | **3-layer in subagent**: search → expand → transcript, all in forked context — only curated summary reaches main conversation | **3-layer**: `mem-search` skill for auto-recall; MCP tools for explicit drill-down |
+| **Session capture** | 1 async `claude -p --model haiku` call at session end | AI observation compression on every tool use (`PostToolUse` hook) + session summary |
+| **Vector backend** | [Milvus](https://milvus.io/) — hybrid search (dense + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) + RRF), scales from embedded to distributed cluster | [ChromaDB](https://www.trychroma.com/) — dense only; SQLite FTS5 for keyword search (separate, not fused) |
+| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, local | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
+| **Storage format** | Transparent `.md` files — human-readable, git-friendly | SQLite database + ChromaDB binary |
+| **Data portability** | Copy `.memsearch/memory/*.md` and rebuild index | Export from SQLite + ChromaDB |
+| **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js / Bun + Express worker service |
+| **Context window cost** | No MCP tool definitions; skill runs in forked context — only curated summary enters main context | MCP tool definitions permanently loaded + each MCP tool call/result consumes main context |
 
-### The Key Insight: Skill-Based vs. MCP-Based Recall
+### The Key Difference: Forked Subagent vs. MCP Tools
 
-The fundamental architectural difference is **how** memory recall is orchestrated.
+Both projects use hooks for session lifecycle and skills for memory recall. The architectural divergence is in **how retrieval interacts with the main context window**.
 
-**memsearch uses a skill-based approach.** The `memory-recall` skill runs in a forked subagent context (`context: fork`), meaning all search, expand, and transcript operations happen in an isolated context window. Claude auto-invokes the skill when it judges historical context would be useful. The subagent autonomously handles all three progressive disclosure layers and returns only a curated summary to the main conversation. Combined with cold-start context from the `SessionStart` hook and a lightweight `systemMessage` hint on every prompt, Claude reliably triggers the skill when past context is relevant.
+**memsearch** runs memory recall in a **forked subagent** (`context: fork`). The `memory-recall` skill gets its own isolated context window — all search, expand, and transcript operations happen there. Only the curated summary is returned to the main conversation. This means: (1) intermediate search results never pollute the main context, (2) multi-step retrieval is autonomous, and (3) no MCP tool definitions consume context tokens.
 
-**claude-mem gives Claude MCP tools to search, explore timelines, and fetch observations.** All three layers require Claude to **proactively decide** to invoke them in the main conversation context. While this is more flexible (Claude controls when and what to recall), it means memories are only retrieved when Claude thinks to ask, and every search/expand operation consumes the main context window.
+**claude-mem** combines a `mem-search` skill with **MCP tools** (`search`, `timeline`, `get_observations`, `save_memory`). The MCP tools give Claude explicit control over memory access in the main conversation, at the cost of tool definitions permanently consuming context tokens. The `PostToolUse` hook also records every tool call as an observation, providing richer per-action granularity but incurring more API calls.
 
-The key advantages of the skill-based approach: (1) the subagent handles multi-step retrieval autonomously without distracting the main agent, (2) intermediate search results don't pollute the main context window, and (3) Claude only recalls memories when they're actually needed — no unnecessary context injection on every prompt.
+The other key difference is **storage philosophy**: memsearch treats markdown files as the source of truth (human-readable, git-friendly, rebuildable), while claude-mem uses SQLite + ChromaDB (opaque but structured, with richer queryable metadata).
 
 ---
 
