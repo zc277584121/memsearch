@@ -113,7 +113,7 @@ stateDiagram-v2
         UserInput --> Hint: UserPromptSubmit hook
         Hint --> ClaudeProcesses: "[memsearch] Memory available"
         ClaudeProcesses --> MemoryRecall: needs context?
-        MemoryRecall --> Subagent: memory-recall skill (context: fork)
+        MemoryRecall --> Subagent: memory-recall skill [fork]
         Subagent --> ClaudeResponds: curated summary
         ClaudeProcesses --> ClaudeResponds: no memory needed
         ClaudeResponds --> UserInput: next turn
