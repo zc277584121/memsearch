@@ -18,7 +18,7 @@ graph LR
         CLI["CLI commands:<br/>search · index · watch<br/>expand · transcript · config"]
     end
 
-    subgraph "Claude Code Plugin (ccplugin)"
+    subgraph "ccplugin (Claude Code Plugin)"
         HOOKS["Shell hooks:<br/>SessionStart · UserPromptSubmit<br/>Stop · SessionEnd"]
         SKILL["Skill:<br/>memory-recall (context: fork)"]
     end
@@ -65,6 +65,14 @@ sequenceDiagram
     Claude->>You: ✅ "We already have Redis caching —<br/>let me add the /orders endpoint to it"
     end
 ```
+
+---
+
+## When Is This Useful?
+
+- **Picking up where you left off.** You debugged an auth issue yesterday but didn't finish. Today Claude remembers the root cause, which files you touched, and what you tried — no re-explaining needed.
+- **Recalling past decisions.** "Why did we switch from JWT to session cookies?" Claude can trace back to the original conversation where the trade-offs were discussed, thanks to the [3-layer progressive disclosure](#progressive-disclosure).
+- **Long-running projects.** Over days or weeks of development, architectural context accumulates automatically. Claude stays aware of your codebase conventions, past refactors, and resolved issues without you having to maintain a manual changelog.
 
 ---
 
