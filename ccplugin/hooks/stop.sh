@@ -45,10 +45,10 @@ fi
 
 ensure_memory_dir
 
-# Parse transcript into concise text
+# Parse transcript — extract the last turn only (one user question + all responses)
 PARSED=$("$SCRIPT_DIR/parse-transcript.sh" "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
-if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ]; then
+if [ -z "$PARSED" ] || [ "$PARSED" = "(empty transcript)" ] || [ "$PARSED" = "(no user message found)" ] || [ "$PARSED" = "(empty turn)" ]; then
   echo '{}'
   exit 0
 fi
@@ -73,25 +73,29 @@ with open(sys.argv[1]) as f:
 print(uuid)
 " "$TRANSCRIPT_PATH" 2>/dev/null || true)
 
-# Use claude -p to summarize the parsed transcript into concise bullet points.
+# Use claude -p to summarize the last turn into structured bullet points.
 # --model haiku: cheap and fast model for summarization
 # --no-session-persistence: don't save this throwaway session to disk
 # --no-chrome: skip browser integration
 # --system-prompt: separate role instructions from data (transcript via stdin)
 SUMMARY=""
 if command -v claude &>/dev/null; then
-  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 claude -p \
+  SUMMARY=$(printf '%s' "$PARSED" | MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
     --model haiku \
     --no-session-persistence \
     --no-chrome \
-    --system-prompt "You are a session memory writer. Your ONLY job is to output bullet-point summaries. Output NOTHING else — no greetings, no questions, no offers to help, no preamble, no closing remarks.
+    --system-prompt "You are a third-person note-taker. You will receive a transcript of ONE turn from a coding session between a user and Claude Code. Your job is to record what happened in that turn as factual notes. You are NOT Claude Code — do NOT answer questions, give explanations, or offer help. Just record what occurred.
+
+Output 2-6 bullet points, each starting with '- '. Nothing else.
 
 Rules:
-- Output 3-8 bullet points, each starting with '- '
-- Focus on: decisions made, problems solved, code changes, key findings
-- Be specific and factual — mention file names, function names, and concrete details
-- Do NOT include timestamps, headers, or any formatting beyond bullet points
-- Do NOT add any text before or after the bullet points" \
+- Write in third person: 'User asked...', 'Claude read file X', 'Claude ran command Y'
+- First bullet: what the user asked or wanted (one sentence)
+- Remaining bullets: what Claude did — tools called, files read/edited, commands run, key findings
+- Be specific: mention file names, function names, tool names, and concrete outcomes
+- Do NOT answer the user's question yourself — just note what was discussed
+- Do NOT add any text before or after the bullet points
+- Write in the same language as the user's message in the transcript" \
     2>/dev/null || true)
 fi
 

@@ -66,9 +66,9 @@ ccplugin/
 │   ├── common.sh                # Shared setup: PATH, memsearch detection, collection name, watch PID
 │   ├── session-start.sh         # SessionStart: start watch, write session heading, inject recent memories
 │   ├── user-prompt-submit.sh    # UserPromptSubmit: lightweight hint reminding Claude about memory skill
-│   ├── stop.sh                  # Stop: parse transcript → haiku summarize → append to daily .md (async)
+│   ├── stop.sh                  # Stop: extract last turn → haiku summarize (third-person) → append to daily .md (async)
 │   ├── session-end.sh           # SessionEnd: stop watch process
-│   └── parse-transcript.sh      # Deterministic JSONL-to-text parser (used by stop.sh)
+│   └── parse-transcript.sh      # Last-turn extractor: finds last user question → EOF, formats for LLM (Python 3, no jq)
 ├── scripts/
 │   └── derive-collection.sh     # Derive per-project collection name from project path
 └── skills/
@@ -86,7 +86,7 @@ ccplugin/
 **Supporting hooks:**
 - `SessionStart` injects cold-start context (recent daily logs) so Claude knows history exists
 - `UserPromptSubmit` returns a lightweight `systemMessage` hint ("[memsearch] Memory available") to increase skill trigger awareness
-- `Stop` hook is async and non-blocking — calls `claude -p --model haiku` to summarize, appends to daily `.md`
+- `Stop` hook is async and non-blocking — extracts last turn only, calls `claude -p --model haiku` (with `CLAUDECODE=` to bypass nested session detection) to summarize as third-person notes, appends to daily `.md`
 
 When modifying hooks/skills, keep in mind:
 - All hooks output JSON to stdout (`additionalContext` for context injection, `systemMessage` for visible hints, or empty `{}`)

@@ -134,7 +134,7 @@ The plugin defines exactly 4 hooks, all declared in `hooks/hooks.json`:
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
 | **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
-| **Stop** | command | **yes** | 120s | Parse transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize, append summary with session/turn anchors to daily `.md` |
+| **Stop** | command | **yes** | 120s | Extract last turn from transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize as third-person notes, append summary with session/turn anchors to daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
 ### What Each Hook Does
@@ -166,12 +166,13 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
 
 1. **Guards against recursion.** Checks `stop_hook_active` to prevent infinite loops (since the hook itself calls `claude -p`).
 2. **Validates the transcript.** Skips if the transcript file is missing or has fewer than 3 lines.
-3. **Parses the transcript.** Calls `parse-transcript.sh`, which:
-    - Takes the last 200 lines of the JSONL transcript
-    - Truncates user/assistant text to 500 characters each
-    - Extracts tool names with input summaries
-    - Skips `file-history-snapshot` entries
-4. **Summarizes with Haiku.** Pipes the parsed transcript to `claude -p --model haiku --no-session-persistence` with a system prompt that requests 3-8 bullet points focusing on decisions, problems solved, code changes, and key findings.
+3. **Parses the last turn.** Calls `parse-transcript.sh`, which:
+    - Scans backward from EOF to find the last real user message (content is a string, not a `tool_result`)
+    - Extracts only the last turn: from that user message to EOF
+    - Skips `progress`, `file-history-snapshot`, `system`, and `thinking` blocks
+    - Keeps user/assistant text and tool call summaries; truncates tool results to 1000 characters
+    - Uses Python 3 (no `jq` dependency)
+4. **Summarizes with Haiku.** Pipes the parsed last turn to `claude -p --model haiku --no-session-persistence` with a third-person note-taker system prompt that requests 2-6 bullet points recording what the user asked and what Claude did (tools called, files changed, key findings). The summary language matches the user's language.
 5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. Then explicitly runs `memsearch index` to ensure the new content is indexed immediately, rather than relying on the watcher's debounce timer (which may not fire before SessionEnd kills the watcher).
 
 #### SessionEnd
@@ -579,8 +580,8 @@ ccplugin/
 | `common.sh` | Shared shell library sourced by all hooks. Handles stdin JSON parsing, PATH setup, memsearch binary detection (prefers PATH, falls back to `uv run`), memory directory management, and the watch singleton (start/stop with PID file and orphan cleanup). |
 | `session-start.sh` | SessionStart hook implementation. Starts the watcher, writes the session heading, and reads recent memory files for cold-start context injection. |
 | `user-prompt-submit.sh` | UserPromptSubmit hook implementation. Returns a lightweight `systemMessage` hint to keep Claude aware of the memory system. No search -- retrieval is handled by the memory-recall skill. |
-| `stop.sh` | Stop hook implementation. Extracts the transcript path, validates it, delegates parsing to `parse-transcript.sh`, calls Haiku for summarization, and appends the result with session anchors to the daily memory file. |
-| `parse-transcript.sh` | Standalone transcript parser. Processes the last 200 lines of a JSONL transcript, truncates content to 500 characters, extracts tool call summaries, and skips file-history-snapshot entries. Used by `stop.sh`. |
+| `stop.sh` | Stop hook implementation. Extracts the transcript path, validates it, delegates parsing to `parse-transcript.sh`, calls Haiku for summarization (with `CLAUDECODE=` to bypass nested session detection), and appends the result with session anchors to the daily memory file. |
+| `parse-transcript.sh` | Standalone transcript parser. Extracts the last turn (last user question + all responses to EOF) from a JSONL transcript using Python 3. Skips progress, thinking, and file-history-snapshot entries. No `jq` dependency. Used by `stop.sh`. |
 | `session-end.sh` | SessionEnd hook implementation. Calls `stop_watch` to terminate the background watcher and clean up. |
 
 ---
