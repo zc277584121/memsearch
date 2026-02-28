@@ -134,7 +134,7 @@ stateDiagram-v2
 |------|------|-------|---------|-------------|
 | **SessionStart** | command | no | 10s | Start `memsearch watch` singleton, write session heading to today's `.md`, inject recent daily logs as cold-start context via `additionalContext`, display config status (provider/model/milvus) in `systemMessage` |
 | **UserPromptSubmit** | command | no | 15s | Lightweight hint: returns `systemMessage` "[memsearch] Memory available" (skip if < 10 chars). No search — recall is handled by the memory-recall skill |
-| **Stop** | command | **yes** | 120s | Parse transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize, append summary with session/turn anchors to daily `.md` |
+| **Stop** | command | **yes** | 120s | Extract last turn from transcript with `parse-transcript.sh`, call `claude -p --model haiku` to summarize (third-person notes), append summary with session/turn anchors to daily `.md` |
 | **SessionEnd** | command | no | 10s | Stop the `memsearch watch` background process (cleanup) |
 
 ### What Each Hook Does
@@ -166,8 +166,8 @@ Fires after Claude finishes each response. Runs **asynchronously** so it does no
 
 1. **Guards against recursion.** Checks `stop_hook_active` to prevent infinite loops (since the hook itself calls `claude -p`).
 2. **Validates the transcript.** Skips if the transcript file is missing or has fewer than 3 lines.
-3. **Parses the transcript.** Calls `parse-transcript.sh`, which takes the last 200 lines of the JSONL transcript, truncates content to 500 characters, extracts tool call summaries, and skips `file-history-snapshot` entries.
-4. **Summarizes with Haiku.** Pipes the parsed transcript to `claude -p --model haiku --no-session-persistence` with a system prompt requesting 3-8 bullet points.
+3. **Extracts the last turn.** Calls `parse-transcript.sh` (Python3 inline, no `jq` dependency), which finds the last real user message and extracts everything from there to EOF. Skips progress, `file-history-snapshot`, system, and thinking blocks. Tool results are truncated to 1000 characters (configurable via `MEMSEARCH_MAX_RESULT_CHARS`).
+4. **Summarizes with Haiku.** Pipes the parsed turn to `CLAUDECODE= claude -p --model haiku --no-session-persistence` with a third-person note-taker system prompt requesting 2-6 bullet points in the same language as the user's message.
 5. **Appends to daily log.** Writes a `### HH:MM` sub-heading with an HTML comment anchor containing session ID, turn UUID, and transcript path. Then runs `memsearch index` to ensure immediate indexing.
 
 #### SessionEnd
@@ -418,8 +418,8 @@ ccplugin/
 │   ├── common.sh                # Shared setup: env, PATH, memsearch detection, watch management
 │   ├── session-start.sh         # Start watch + write session heading + inject cold-start context
 │   ├── user-prompt-submit.sh    # Lightweight systemMessage hint ("[memsearch] Memory available")
-│   ├── stop.sh                  # Parse transcript -> haiku summary -> append to daily .md
-│   ├── parse-transcript.sh      # Deterministic JSONL-to-text parser with truncation
+│   ├── stop.sh                  # Extract last turn → haiku summary (third-person) → append to daily .md
+│   ├── parse-transcript.sh      # Extract last turn from JSONL transcript (Python3, no jq)
 │   └── session-end.sh           # Stop watch process (cleanup)
 └── skills/
     └── memory-recall/

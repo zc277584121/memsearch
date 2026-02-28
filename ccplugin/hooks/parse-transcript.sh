@@ -1,117 +1,143 @@
 #!/usr/bin/env bash
-# Parse a Claude Code JSONL transcript into a concise text summary
-# suitable for AI summarization.
+# Parse a Claude Code JSONL transcript — extract and format the LAST TURN only.
+#
+# A "turn" = the last real user message (content is a string, not a tool_result)
+# plus all subsequent assistant responses, tool calls, and tool results until EOF.
+#
+# Skips: progress, file-history-snapshot, system, thinking blocks.
+# Tool results are truncated to MAX_RESULT_CHARS (default 1000) to stay within
+# LLM context limits while preserving more detail than the old 500-char cutoff.
 #
 # Usage: bash parse-transcript.sh <transcript_path>
-#
-# Truncation rules:
-#   - Only process the last MAX_LINES lines (default 200)
-#   - User/assistant text content > MAX_CHARS chars (default 500) is truncated to tail
-#   - Tool calls: only output tool name + truncated input summary
-#   - Tool results: only output a one-line truncated preview
-#   - Skip file-history-snapshot entries entirely
 
 set -euo pipefail
 
-# parse-transcript requires jq for JSON processing; gracefully degrade if missing
-if ! command -v jq &>/dev/null; then
-  echo "(transcript parsing skipped — jq not installed)"
-  exit 0
-fi
-
 TRANSCRIPT_PATH="${1:-}"
-MAX_LINES="${MEMSEARCH_MAX_LINES:-200}"
-MAX_CHARS="${MEMSEARCH_MAX_CHARS:-500}"
 
 if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
   echo "ERROR: transcript not found: $TRANSCRIPT_PATH" >&2
   exit 1
 fi
 
-# Count total lines for context
-TOTAL_LINES=$(wc -l < "$TRANSCRIPT_PATH")
-
-if [ "$TOTAL_LINES" -eq 0 ]; then
+# Check if transcript has any content
+LINE_COUNT=$(wc -l < "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
+if [ "$LINE_COUNT" -eq 0 ]; then
   echo "(empty transcript)"
   exit 0
 fi
 
-# Helper: truncate text to last N chars
-truncate_tail() {
-  local text="$1"
-  local max="$2"
-  local len=${#text}
-  if [ "$len" -le "$max" ]; then
-    printf '%s' "$text"
-  else
-    printf '...%s' "${text: -$max}"
-  fi
-}
+MAX_RESULT_CHARS="${MEMSEARCH_MAX_RESULT_CHARS:-1000}"
 
-# Print header
-if [ "$TOTAL_LINES" -gt "$MAX_LINES" ]; then
-  echo "=== Transcript (last $MAX_LINES of $TOTAL_LINES lines) ==="
-else
-  echo "=== Transcript ($TOTAL_LINES lines) ==="
-fi
-echo ""
+python3 -c '
+import json, sys
 
-# Process JSONL — take the last MAX_LINES, parse with jq line by line
-tail -n "$MAX_LINES" "$TRANSCRIPT_PATH" | while IFS= read -r line; do
-  # Extract type
-  entry_type=$(printf '%s' "$line" | jq -r '.type // empty' 2>/dev/null) || continue
+MAX_RESULT_CHARS = int(sys.argv[2])
 
-  # Skip file snapshots
-  [ "$entry_type" = "file-history-snapshot" ] && continue
+def truncate(text, max_chars):
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "...(truncated)"
 
-  # Extract timestamp
-  ts=$(printf '%s' "$line" | jq -r '.timestamp // empty' 2>/dev/null)
-  ts_short=""
-  if [ -n "$ts" ]; then
-    # Extract HH:MM:SS from ISO timestamp
-    ts_short=$(printf '%s' "$ts" | sed -n 's/.*T\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\).*/\1/p' 2>/dev/null || echo "")
-  fi
+def find_last_turn_start(lines):
+    """Find the index of the last real user message (content is a plain string)."""
+    for i in range(len(lines) - 1, -1, -1):
+        try:
+            obj = json.loads(lines[i])
+            if obj.get("type") == "user" and not obj.get("isMeta"):
+                content = obj.get("message", {}).get("content")
+                if isinstance(content, str) and content.strip():
+                    return i
+        except Exception:
+            pass
+    return None
 
-  if [ "$entry_type" = "user" ]; then
-    # Check if it's a tool_result or a normal user message
-    content_type=$(printf '%s' "$line" | jq -r '.message.content | if type == "array" then .[0].type // "text" else "text" end' 2>/dev/null) || content_type="text"
+def format_turn(lines):
+    """Format a turn into structured text for LLM summarization."""
+    output = []
+    for raw_line in lines:
+        try:
+            obj = json.loads(raw_line)
+        except Exception:
+            continue
 
-    if [ "$content_type" = "tool_result" ]; then
-      # Tool result — one-line preview
-      result_text=$(printf '%s' "$line" | jq -r '.message.content[0].content // "" | if type == "array" then .[0].text // "" else . end' 2>/dev/null)
-      result_short=$(truncate_tail "$result_text" "$MAX_CHARS")
-      echo "[${ts_short}] TOOL RESULT: ${result_short}"
-    else
-      # Normal user message
-      user_text=$(printf '%s' "$line" | jq -r '.message.content // "" | if type == "array" then map(select(.type == "text") | .text) | join("\n") else . end' 2>/dev/null)
-      user_short=$(truncate_tail "$user_text" "$MAX_CHARS")
-      echo ""
-      echo "[${ts_short}] USER: ${user_short}"
-    fi
+        msg_type = obj.get("type", "")
 
-  elif [ "$entry_type" = "assistant" ]; then
-    # Process each content block
-    num_blocks=$(printf '%s' "$line" | jq -r '.message.content | length' 2>/dev/null) || num_blocks=0
+        # Skip non-content types
+        if msg_type not in ("user", "assistant"):
+            continue
 
-    for (( i=0; i<num_blocks; i++ )); do
-      block_type=$(printf '%s' "$line" | jq -r ".message.content[$i].type // empty" 2>/dev/null)
+        if msg_type == "user":
+            content = obj.get("message", {}).get("content")
+            if isinstance(content, str) and content.strip():
+                output.append(f"USER: {content.strip()}")
+            elif isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "tool_result":
+                        result = block.get("content", "")
+                        if isinstance(result, list):
+                            texts = []
+                            for item in result:
+                                if isinstance(item, dict):
+                                    texts.append(item.get("text", ""))
+                            result = "\n".join(texts)
+                        result = truncate(str(result), MAX_RESULT_CHARS)
+                        is_error = block.get("is_error", False)
+                        prefix = "ERROR" if is_error else "RESULT"
+                        output.append(f"{prefix}: {result}")
 
-      if [ "$block_type" = "text" ]; then
-        text=$(printf '%s' "$line" | jq -r ".message.content[$i].text // empty" 2>/dev/null)
-        [ -z "$text" ] && continue
-        text_short=$(truncate_tail "$text" "$MAX_CHARS")
-        echo "[${ts_short}] ASSISTANT: ${text_short}"
+        elif msg_type == "assistant":
+            content = obj.get("message", {}).get("content", [])
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                block_type = block.get("type", "")
 
-      elif [ "$block_type" = "tool_use" ]; then
-        tool_name=$(printf '%s' "$line" | jq -r ".message.content[$i].name // \"unknown\"" 2>/dev/null)
-        # One-line summary of tool input
-        tool_input_summary=$(printf '%s' "$line" | jq -r ".message.content[$i].input | to_entries | map(\"\(.key)=\(.value | tostring | .[0:80])\") | join(\", \")" 2>/dev/null || echo "")
-        tool_input_short=$(truncate_tail "$tool_input_summary" 200)
-        echo "[${ts_short}] TOOL USE: ${tool_name}(${tool_input_short})"
-      fi
-    done
-  fi
-done
+                if block_type == "text":
+                    text = block.get("text", "").strip()
+                    if text:
+                        output.append(f"ASSISTANT: {text}")
 
-echo ""
-echo "=== End of transcript ==="
+                elif block_type == "tool_use":
+                    name = block.get("name", "unknown")
+                    inp = block.get("input", {})
+                    # Show key parameters concisely
+                    parts = []
+                    for k, v in inp.items():
+                        v_str = str(v)
+                        if len(v_str) > 120:
+                            v_str = v_str[:120] + "..."
+                        parts.append(f"{k}={v_str}")
+                    input_summary = ", ".join(parts)
+                    if len(input_summary) > 400:
+                        input_summary = input_summary[:400] + "..."
+                    output.append(f"TOOL: {name}({input_summary})")
+
+                # Skip thinking blocks — internal reasoning, not useful for memory
+
+    return "\n".join(output)
+
+# --- Main ---
+transcript_path = sys.argv[1]
+with open(transcript_path) as f:
+    lines = f.readlines()
+
+if not lines:
+    print("(empty transcript)")
+    sys.exit(0)
+
+start_idx = find_last_turn_start(lines)
+if start_idx is None:
+    print("(no user message found)")
+    sys.exit(0)
+
+last_turn = lines[start_idx:]
+formatted = format_turn(last_turn)
+
+if not formatted.strip():
+    print("(empty turn)")
+    sys.exit(0)
+
+print(formatted)
+' "$TRANSCRIPT_PATH" "$MAX_RESULT_CHARS"
