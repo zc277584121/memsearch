@@ -13,7 +13,7 @@ set -euo pipefail
 PROJECT_DIR="${1:-$(pwd)}"
 
 # Resolve to absolute path (realpath preferred, cd fallback, raw last resort)
-if command -v realpath &>/dev/null; then
+if realpath -m "$PROJECT_DIR" &>/dev/null 2>&1; then
   PROJECT_DIR="$(realpath -m "$PROJECT_DIR")"
 elif [ -d "$PROJECT_DIR" ]; then
   PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
