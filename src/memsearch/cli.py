@@ -456,8 +456,8 @@ def watch(
 @click.option("--output-dir", "-o", default=None, type=click.Path(), help="Directory to write the compact summary into.")
 @click.option("--llm-provider", default=None, help="LLM for summarization.")
 @click.option("--llm-model", default=None, help="Override LLM model.")
-@click.option("--llm-base-url", default=None, help="OpenAI-compatible base URL for the LLM.")
-@click.option("--llm-api-key", default=None, help="API key for the LLM provider.")
+@click.option("--llm-base-url", default=None, help="OpenAI-compatible base URL for the LLM (OpenAI provider only).")
+@click.option("--llm-api-key", default=None, help="API key for the LLM (OpenAI provider only).")
 @click.option("--prompt", default=None, help="Custom prompt template (must contain {chunks}).")
 @click.option("--prompt-file", default=None, type=click.Path(exists=True), help="Read prompt template from file.")
 @_common_options

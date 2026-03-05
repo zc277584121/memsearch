@@ -199,12 +199,13 @@ def test_compact_config_new_fields():
 def test_compact_config_env_ref_resolved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """resolve_config should resolve env: references in compact.api_key and compact.base_url."""
     monkeypatch.setenv("TEST_LLM_KEY", "sk-llm-from-env")
+    monkeypatch.setenv("TEST_LLM_BASE_URL", "https://my-llm-endpoint.com")
 
     cfg_file = tmp_path / "config.toml"
     save_config({
         "compact": {
             "api_key": "env:TEST_LLM_KEY",
-            "base_url": "https://my-llm-endpoint.com",
+            "base_url": "env:TEST_LLM_BASE_URL",
         },
     }, cfg_file)
 

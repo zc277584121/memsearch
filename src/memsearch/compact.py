@@ -12,8 +12,6 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .config import resolve_env_ref
-
 COMPACT_PROMPT = """\
 You are a knowledge compression assistant. Given the following chunks of text \
 from a knowledge base, create a concise but comprehensive summary that preserves \
@@ -83,11 +81,11 @@ async def _compact_openai(prompt: str, model: str, *, base_url: str | None = Non
     import openai
 
     kwargs: dict = {}
-    resolved_base_url = resolve_env_ref(base_url) if base_url else os.environ.get("OPENAI_BASE_URL")
+    resolved_base_url = base_url or os.environ.get("OPENAI_BASE_URL")
     if resolved_base_url:
         kwargs["base_url"] = resolved_base_url
     if api_key:
-        kwargs["api_key"] = resolve_env_ref(api_key)
+        kwargs["api_key"] = api_key
 
     client = openai.AsyncOpenAI(**kwargs)
     resp = await client.chat.completions.create(
