@@ -126,5 +126,4 @@ They evolve independently — bump only the one that changed. If both changed, b
 - Uses `uv` + `pyproject.toml` for dependency management (not pip).
 - Optional deps via extras: `[google]`, `[voyage]`, `[ollama]`, `[local]`, `[all]`.
 - Docs at `docs/` use mkdocs-material. The `site/` directory is build output — do not commit.
-- Code and comments in English. Respond to the user in Chinese unless they specify otherwise.
 - Always use `uv run python -m pytest` instead of `uv run pytest` to avoid system Python pytest conflicts.
