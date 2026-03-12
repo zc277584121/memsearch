@@ -6,6 +6,10 @@ https://github.com/user-attachments/assets/190a9973-8e23-4ca1-b2a4-a5cf09dad10a
 
 Built on Claude Code's native [Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks), [Skills](https://docs.anthropic.com/en/docs/claude-code/skills), and [CLI](https://zilliztech.github.io/memsearch/cli/) — no MCP servers, no sidecar services. Everything runs locally as shell scripts, a skill definition, and a Python CLI.
 
+### What's New
+
+**Default embedding changed to ONNX bge-m3 int8** — the plugin now runs entirely locally with no API key and no GPU required. Quality is comparable to OpenAI `text-embedding-3-small` (only ~1% lower on our benchmark). Existing users who want to switch: run `memsearch config set embedding.provider onnx && memsearch index --force` to re-index. See the [evaluation README](evaluation/README.md) for detailed benchmark results and rationale.
+
 ### How the Pieces Fit Together
 
 ```mermaid
