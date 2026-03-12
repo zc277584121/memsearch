@@ -16,6 +16,15 @@ if [ -z "$MEMSEARCH_CMD" ]; then
   _detect_memsearch
 fi
 
+# First-time setup: if no config file exists, default to onnx provider.
+# This avoids requiring an OPENAI_API_KEY for new ccplugin users.
+# Existing users (who already have a config file) are not affected.
+if [ -n "$MEMSEARCH_CMD" ]; then
+  if [ ! -f "$HOME/.memsearch/config.toml" ] && [ ! -f "${CLAUDE_PROJECT_DIR:-.}/.memsearch.toml" ]; then
+    $MEMSEARCH_CMD config set embedding.provider onnx 2>/dev/null || true
+  fi
+fi
+
 # Read resolved config and version for status display
 PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; VERSION=""
 if [ -n "$MEMSEARCH_CMD" ]; then
@@ -72,6 +81,7 @@ fi
 status="[memsearch${VERSION_TAG}] embedding: ${PROVIDER}/${MODEL:-unknown} | milvus: ${MILVUS_URI:-unknown}${COLLECTION_HINT}${UPDATE_HINT}"
 if [ "$KEY_MISSING" = true ]; then
   status+=" | ERROR: ${REQUIRED_KEY} not set — memory search disabled"
+  status+=" | Tip: switch to free local embedding: memsearch config set embedding.provider onnx && memsearch index --force"
 fi
 
 # Build collection description: "<project_basename> | <provider>/<model>"
@@ -98,9 +108,19 @@ fi
 # start_watch() skips watch for Lite — file lock prevents concurrent access.
 start_watch
 
-# Lite mode: one-time index since watch is not running
+# Lite mode: one-time index since watch is not running.
+# If embedding dimension changed (e.g. user switched provider), auto-reset and re-index.
 if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
-  run_memsearch index "$MEMORY_DIR" &>/dev/null &
+  _index_args=("$MEMORY_DIR")
+  [ -n "$COLLECTION_NAME" ] && _index_args+=(--collection "$COLLECTION_NAME")
+  [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
+  INDEX_OUTPUT=$($MEMSEARCH_CMD index "${_index_args[@]}" 2>&1) || true
+  if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
+    _reset_args=(--yes)
+    [ -n "$COLLECTION_NAME" ] && _reset_args+=(--collection "$COLLECTION_NAME")
+    $MEMSEARCH_CMD reset "${_reset_args[@]}" 2>/dev/null || true
+    $MEMSEARCH_CMD index "${_index_args[@]}" &>/dev/null &
+  fi
 fi
 
 # Always include status in systemMessage
