@@ -109,18 +109,21 @@ fi
 start_watch
 
 # Lite mode: one-time index since watch is not running.
+# Runs in background subshell to avoid blocking the hook (ONNX model loading takes ~10s).
 # If embedding dimension changed (e.g. user switched provider), auto-reset and re-index.
 if [[ "$MILVUS_URI" != http* ]] && [[ "$MILVUS_URI" != tcp* ]]; then
-  _index_args=("$MEMORY_DIR")
-  [ -n "$COLLECTION_NAME" ] && _index_args+=(--collection "$COLLECTION_NAME")
-  [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
-  INDEX_OUTPUT=$($MEMSEARCH_CMD index "${_index_args[@]}" 2>&1) || true
-  if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
-    _reset_args=(--yes)
-    [ -n "$COLLECTION_NAME" ] && _reset_args+=(--collection "$COLLECTION_NAME")
-    $MEMSEARCH_CMD reset "${_reset_args[@]}" 2>/dev/null || true
-    $MEMSEARCH_CMD index "${_index_args[@]}" &>/dev/null &
-  fi
+  (
+    _index_args=("$MEMORY_DIR")
+    [ -n "$COLLECTION_NAME" ] && _index_args+=(--collection "$COLLECTION_NAME")
+    [ -n "$COLLECTION_DESC" ] && _index_args+=(--description "$COLLECTION_DESC")
+    INDEX_OUTPUT=$($MEMSEARCH_CMD index "${_index_args[@]}" 2>&1) || true
+    if echo "$INDEX_OUTPUT" | grep -q "dimension mismatch"; then
+      _reset_args=(--yes)
+      [ -n "$COLLECTION_NAME" ] && _reset_args+=(--collection "$COLLECTION_NAME")
+      $MEMSEARCH_CMD reset "${_reset_args[@]}" 2>/dev/null || true
+      $MEMSEARCH_CMD index "${_index_args[@]}" 2>/dev/null || true
+    fi
+  ) &
 fi
 
 # Always include status in systemMessage
