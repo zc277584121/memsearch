@@ -79,20 +79,29 @@ sequenceDiagram
 ### Install from Marketplace (recommended)
 
 ```bash
-# 1. Set your embedding API key (OpenAI is the default provider)
-export OPENAI_API_KEY="sk-..."
-
-# 2. In Claude Code, add the marketplace and install the plugin
+# 1. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
 
-# 3. Have a conversation, then exit. Check your memories:
+# 2. Have a conversation, then exit. Check your memories:
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 
-# 4. Start a new session -- Claude automatically remembers!
+# 3. Start a new session -- Claude automatically remembers!
 ```
 
-> **Note:** If memsearch is not already installed, the plugin will attempt to install it automatically on first run.
+> **Note:** The plugin defaults to the **ONNX bge-m3** embedding model -- no API key required, runs locally on CPU. This model was selected through a [comprehensive benchmark](../../ccplugin/evaluation/README.md) of 12+ models on bilingual memory retrieval. If memsearch is not already installed, the plugin will install `memsearch[onnx]` automatically via `uvx` on first run. To use a different embedding provider (e.g. OpenAI), set it with `memsearch config set embedding.provider openai` and export the required API key.
+
+> **First-time download:** On the first session, the ONNX model (~558 MB) is downloaded from HuggingFace Hub in the background. If your first session appears to hang or memory search is unavailable, the model is still downloading. You can pre-download it manually:
+>
+> ```bash
+> uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+> ```
+>
+> If the download is slow or stuck, set the HuggingFace mirror first:
+>
+> ```bash
+> export HF_ENDPOINT=https://hf-mirror.com
+> ```
 
 ---
 
@@ -166,7 +175,7 @@ This means:
 | **Progressive disclosure** | **3-layer in subagent**: search → expand → transcript, all in forked context -- only curated summary reaches main conversation | **3-layer**: `mem-search` skill for auto-recall; MCP tools for explicit drill-down |
 | **Session capture** | 1 async `claude -p --model haiku` call at session end | AI observation compression on every tool use (`PostToolUse` hook) + session summary |
 | **Vector backend** | [Milvus](https://milvus.io/) -- [hybrid search](../architecture.md#hybrid-search) (dense + BM25 + RRF), scales from embedded to distributed cluster | [ChromaDB](https://www.trychroma.com/) -- dense only; SQLite FTS5 for keyword search (separate, not fused) |
-| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, local | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
+| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, local, ONNX (default: bge-m3 int8) | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
 | **Storage format** | Transparent `.md` files -- human-readable, git-friendly | SQLite database + ChromaDB binary |
 | **Data portability** | Copy `.memsearch/memory/*.md` and rebuild index | Export from SQLite + ChromaDB |
 | **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js / Bun + Express worker service |

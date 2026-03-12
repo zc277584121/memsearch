@@ -91,7 +91,7 @@ cat .memsearch/memory/$(date +%Y-%m-%d).md
 # 3. Start a new session — Claude automatically remembers!
 ```
 
-> **Note:** The plugin defaults to the **ONNX bge-m3** embedding model — no API key required, runs locally on CPU. If memsearch is not already installed, the plugin will install `memsearch[onnx]` automatically via `uvx` on first run. To use a different embedding provider (e.g. OpenAI), set it with `memsearch config set embedding.provider openai` and export the required API key.
+> **Note:** The plugin defaults to the **ONNX bge-m3** embedding model — no API key required, runs locally on CPU. This model was selected through a [comprehensive benchmark](evaluation/README.md) of 12+ models on bilingual memory retrieval. If memsearch is not already installed, the plugin will install `memsearch[onnx]` automatically via `uvx` on first run. To use a different embedding provider (e.g. OpenAI), set it with `memsearch config set embedding.provider openai` and export the required API key.
 
 ---
 
@@ -762,7 +762,40 @@ If you see `## Session HH:MM` headings but no `### HH:MM` sub-headings with bull
 |---------|-------|---------|
 | "ERROR: \<KEY\> not set" in status line | Export the required API key for your provider | [§1](#1-sessionstart-status-line) |
 | "UPDATE: v0.x.x available" in status line | Upgrade memsearch | [§1](#1-sessionstart-status-line) |
+| First session hangs or memory search unavailable | The ONNX model (~558 MB) is downloading in the background. See [§7](#7-first-time-model-download) | [§7](#7-first-time-model-download) |
 | Search returns no results | Run `memsearch stats` and `memsearch search` manually | [§3](#3-cli-diagnostic-commands) |
 | New memories not being indexed | Check watch process is running | [§4](#4-watch-process) |
 | Claude never invokes memory recall | Try `/memory-recall <query>` manually | [§5](#5-skill-execution--progressive-disclosure) |
 | Session summaries missing from memory files | Check `claude` CLI is available and API key is set | [§6](#6-memory-files) |
+
+---
+
+### 7. First-Time Model Download
+
+The plugin defaults to the **ONNX bge-m3 int8** embedding model, which runs locally on CPU with no API key required. On the very first session, this model (~558 MB) needs to be downloaded from HuggingFace Hub. The download runs in the background during session start, and during this time memory search may be temporarily unavailable.
+
+**Symptoms:**
+
+- First session appears to hang after sending a prompt (the background download is blocking Milvus Lite)
+- `[memsearch] Memory available` hint appears but memory recall returns no results
+- `memsearch search` or `memsearch index` commands hang on first run
+
+**Pre-download the model manually:**
+
+```bash
+# This triggers the model download without starting a Claude session
+uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+```
+
+**If the download is slow or stuck:**
+
+HuggingFace Hub may be slow or inaccessible from certain networks. Set the `HF_ENDPOINT` environment variable to use a mirror:
+
+```bash
+export HF_ENDPOINT=https://hf-mirror.com
+uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+```
+
+To make this permanent, add `export HF_ENDPOINT=https://hf-mirror.com` to your `~/.bashrc` or `~/.zshrc`.
+
+**After the first download:** The model is cached locally at `~/.cache/huggingface/hub/` and all subsequent sessions load it instantly from disk with no network access required.

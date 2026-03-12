@@ -13,6 +13,7 @@ $ pip install memsearch
 Each optional extra pulls in the provider SDK you need:
 
 ```bash
+$ pip install "memsearch[onnx]"        # ONNX Runtime — bge-m3 int8, CPU, no API key
 $ pip install "memsearch[google]"      # Google Gemini embeddings
 $ pip install "memsearch[voyage]"      # Voyage AI embeddings
 $ pip install "memsearch[ollama]"      # Ollama (local, no API key)
@@ -290,6 +291,7 @@ Set the environment variable for your chosen embedding provider. memsearch reads
 | Provider | Env Var | Notes |
 |----------|---------|-------|
 | **OpenAI** (default) | `OPENAI_API_KEY` | Included with base install |
+| **ONNX** (ccplugin default) | -- | No API key needed. CPU-only, bge-m3 int8. Requires `memsearch[onnx]` |
 | OpenAI-compatible proxy | `OPENAI_BASE_URL` | For Azure OpenAI, vLLM, LiteLLM, etc. |
 | Google Gemini | `GOOGLE_API_KEY` | Requires `memsearch[google]` |
 | Voyage AI | `VOYAGE_API_KEY` | Requires `memsearch[voyage]` |

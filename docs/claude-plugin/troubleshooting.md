@@ -10,6 +10,7 @@ The plugin provides several observability mechanisms, from always-on status line
 | [Watch process](#4-watch-process) | Yes (background) | PID file at `.memsearch/.watch.pid` | Index sync issues |
 | [Skill execution](#5-skill-execution-progressive-disclosure) | Yes (in UI) | Skill invocation + Bash tool calls | Memory recall debugging |
 | [Memory files](#6-memory-files) | Yes | `.memsearch/memory/YYYY-MM-DD.md` | Stop hook, summary quality |
+| [First-time model download](#7-first-time-model-download) | First run only | Model download progress | First session hangs |
 
 ---
 
@@ -68,7 +69,8 @@ The plugin checks for the required API key at session start. If missing, memory 
 
 | Provider | Required environment variable |
 |----------|------------------------------|
-| `openai` (default) | `OPENAI_API_KEY` |
+| `onnx` (ccplugin default) | None (local, CPU) |
+| `openai` (Python API default) | `OPENAI_API_KEY` |
 | `google` | `GOOGLE_API_KEY` |
 | `voyage` | `VOYAGE_API_KEY` |
 | `ollama` | None (local) |
@@ -77,11 +79,12 @@ The plugin checks for the required API key at session start. If missing, memory 
 **Fix:** export the key for your configured provider:
 
 ```bash
-# For OpenAI (default)
+# The ccplugin defaults to onnx (no key needed). If you use OpenAI:
 export OPENAI_API_KEY="sk-..."
+memsearch config set embedding.provider openai
 
-# Or switch to a provider that needs no key
-memsearch config set embedding.provider ollama
+# Or switch to free local embedding (no key needed)
+memsearch config set embedding.provider onnx
 ```
 
 To make it permanent, add the export to your `~/.bashrc`, `~/.zshrc`, or equivalent.
@@ -303,4 +306,37 @@ If you see `## Session HH:MM` headings but no `### HH:MM` sub-headings with bull
 | Search returns no results | Run `memsearch stats` and `memsearch search` manually | [§3](#3-cli-diagnostic-commands) |
 | New memories not being indexed | Check watch process is running | [§4](#4-watch-process) |
 | Claude never invokes memory recall | Try `/memory-recall <query>` manually | [§5](#5-skill-execution-progressive-disclosure) |
+| First session hangs or memory search unavailable | The ONNX model (~558 MB) is downloading in the background. See [§7](#7-first-time-model-download) | [§7](#7-first-time-model-download) |
 | Session summaries missing from memory files | Check `claude` CLI is available and API key is set | [§6](#6-memory-files) |
+
+---
+
+## 7. First-Time Model Download
+
+The plugin defaults to the **ONNX bge-m3 int8** embedding model, which runs locally on CPU with no API key required. On the very first session, this model (~558 MB) needs to be downloaded from HuggingFace Hub. The download runs in the background during session start, and during this time memory search may be temporarily unavailable.
+
+**Symptoms:**
+
+- First session appears to hang after sending a prompt (the background download is blocking Milvus Lite)
+- `[memsearch] Memory available` hint appears but memory recall returns no results
+- `memsearch search` or `memsearch index` commands hang on first run
+
+**Pre-download the model manually:**
+
+```bash
+# This triggers the model download without starting a Claude session
+uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+```
+
+**If the download is slow or stuck:**
+
+HuggingFace Hub may be slow or inaccessible from certain networks. Set the `HF_ENDPOINT` environment variable to use a mirror:
+
+```bash
+export HF_ENDPOINT=https://hf-mirror.com
+uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+```
+
+To make this permanent, add `export HF_ENDPOINT=https://hf-mirror.com` to your `~/.bashrc` or `~/.zshrc`.
+
+**After the first download:** The model is cached locally at `~/.cache/huggingface/hub/` and all subsequent sessions load it instantly from disk with no network access required.

@@ -4,7 +4,7 @@ This document describes the evaluation methodology and results used to select th
 
 ## Goal
 
-Find a local, free (no API key) embedding model that performs well on both Chinese and English memory retrieval, to replace the previous OpenAI default in ccplugin. The Python API default remains OpenAI for backward compatibility.
+Benchmark a wide range of embedding models — from cloud APIs to local open-source options — to find a lightweight, practical default for the memsearch ccplugin. The ideal model should perform well on both Chinese and English memory retrieval, run locally without an API key or GPU, and have a small dependency footprint.
 
 ## Dataset
 
@@ -89,16 +89,15 @@ Ranked by Chinese Recall@5 (primary metric):
 5. **Q5 quantization destroys embedding quality** — Qwen3-Embedding-8B Q5 scored last despite being 5.4GB
 6. **OpenAI large offers marginal improvement** — only +3-4% over OpenAI small, at double the cost
 
-## Decision
+## Conclusion
 
-**`gpahal/bge-m3-onnx-int8`** was selected as the ccplugin default embedding model because:
+Based on the benchmark results, **`gpahal/bge-m3-onnx-int8`** stands out as the best practical choice and is adopted as the ccplugin default embedding model:
 
-- Best bilingual quality among local models (zh R@5=0.776, en R@5=0.814)
-- Only 1.1% quality loss vs full PyTorch fp32
-- No API key required — works out of the box
-- No GPU required — runs on CPU via ONNX Runtime
-- Small dependency footprint — `onnxruntime` (~200MB) vs `torch` (~2GB+)
-- 558MB model size, auto-downloaded on first use
+- **Top bilingual quality** among all local models (zh R@5=0.776, en R@5=0.814) — even outperforms OpenAI `text-embedding-3-small`
+- **Minimal quality trade-off** — only 1.1% loss vs full PyTorch fp32, while model size drops from 2.2GB to 558MB
+- **Zero-config** — no API key, no GPU, runs on CPU via ONNX Runtime
+- **Lightweight dependencies** — `onnxruntime` + `tokenizers` + `huggingface-hub` (~200MB total) vs `torch` + `sentence-transformers` (~2GB+)
+- **Auto-downloaded** on first use (558MB), cached locally for subsequent sessions
 
 ### Backward Compatibility
 

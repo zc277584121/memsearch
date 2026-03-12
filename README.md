@@ -339,16 +339,21 @@ memsearch reset                          # drop all indexed data (with confirmat
 memsearch ships with a **[Claude Code plugin](ccplugin/README.md)** — a real-world example of agent memory in action. It gives Claude **automatic persistent memory** across sessions: every session is summarized to markdown, every prompt triggers a semantic search, and a background watcher keeps the index in sync. No commands to learn, no manual saving — just install and go.
 
 ```bash
-# 1. Set your embedding API key (OpenAI is the default provider)
-export OPENAI_API_KEY="sk-..."
-
-# 2. In Claude Code, add the marketplace and install the plugin
+# 1. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
 
-# 3. Restart Claude Code for the plugin to take effect, then start chatting!
+# 2. Restart Claude Code for the plugin to take effect, then start chatting!
 claude
 ```
+
+> **Note:** The plugin defaults to **ONNX bge-m3** embedding — no API key required, runs locally on CPU. On first launch, the model (~558 MB) is downloaded from HuggingFace Hub. If the first session appears to hang, the model is still downloading in the background. You can pre-download it manually:
+>
+> ```bash
+> uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+> ```
+>
+> If the download is slow or stuck, set `export HF_ENDPOINT=https://hf-mirror.com` to use a mirror.
 
 > 📖 Architecture, hook details, and development mode → [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/claude-plugin/)
 
@@ -367,6 +372,7 @@ API keys for embedding/LLM providers are read from standard environment variable
 | Provider | Install | Default Model |
 |----------|---------|---------------|
 | OpenAI | `memsearch` (included) | `text-embedding-3-small` |
+| ONNX | `memsearch[onnx]` | `bge-m3-onnx-int8` (CPU, no API key) |
 | Google | `memsearch[google]` | `gemini-embedding-001` |
 | Voyage | `memsearch[voyage]` | `voyage-3-lite` |
 | Ollama | `memsearch[ollama]` | `nomic-embed-text` |
