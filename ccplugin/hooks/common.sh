@@ -22,7 +22,7 @@ _detect_memsearch() {
   if command -v memsearch &>/dev/null; then
     MEMSEARCH_CMD="memsearch"
   elif command -v uvx &>/dev/null; then
-    MEMSEARCH_CMD="uvx memsearch"
+    MEMSEARCH_CMD="uvx --from 'memsearch[onnx]' memsearch"
   fi
 }
 _detect_memsearch

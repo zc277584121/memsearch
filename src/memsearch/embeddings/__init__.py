@@ -25,6 +25,7 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
     "voyage": ("memsearch.embeddings.voyage", "VoyageEmbedding"),
     "ollama": ("memsearch.embeddings.ollama", "OllamaEmbedding"),
     "local": ("memsearch.embeddings.local", "LocalEmbedding"),
+    "onnx": ("memsearch.embeddings.onnx", "OnnxEmbedding"),
 }
 
 # Default model for each provider (mirrors the __init__ defaults in each class).
@@ -35,6 +36,7 @@ DEFAULT_MODELS: dict[str, str] = {
     "voyage": "voyage-3-lite",
     "ollama": "nomic-embed-text",
     "local": "all-MiniLM-L6-v2",
+    "onnx": "gpahal/bge-m3-onnx-int8",
 }
 
 _INSTALL_HINTS: dict[str, str] = {
@@ -43,6 +45,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "voyage": 'pip install "memsearch[voyage]"  (or: uv add "memsearch[voyage]")',
     "ollama": 'pip install "memsearch[ollama]"  (or: uv add "memsearch[ollama]")',
     "local": 'pip install "memsearch[local]"  (or: uv add "memsearch[local]")',
+    "onnx": 'pip install "memsearch[onnx]"  (or: uv add "memsearch[onnx]")',
 }
 
 
@@ -59,7 +62,7 @@ def get_provider(
     Parameters
     ----------
     name:
-        One of "openai", "google", "voyage", "ollama", "local".
+        One of "openai", "google", "voyage", "ollama", "local", "onnx".
     model:
         Override the default model for the provider.
     batch_size:

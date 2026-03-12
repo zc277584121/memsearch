@@ -33,7 +33,8 @@ class LocalEmbedding:
             sys.stderr = io.StringIO()
             from sentence_transformers import SentenceTransformer
 
-            self._st_model = SentenceTransformer(model)
+            # trust_remote_code needed for models with custom code (e.g. jina-embeddings-v3)
+            self._st_model = SentenceTransformer(model, trust_remote_code=True)
         finally:
             sys.stderr = old_stderr
             if prev_tqdm is None:

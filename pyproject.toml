@@ -29,10 +29,19 @@ dependencies = [
 [project.optional-dependencies]
 google = ["google-genai>=1.0"]
 voyage = ["voyageai>=0.3"]
-ollama = ["ollama>=0.4"]
-local = ["sentence-transformers>=3.0"]
+ollama = [
+    "ollama>=0.4",
+]
+local = [
+    "einops>=0.8.2",
+    "sentence-transformers>=3.0",
+]
 anthropic = ["anthropic>=0.40"]
-all = ["memsearch[google,voyage,ollama,local,anthropic]"]
+onnx = [
+    "onnxruntime>=1.17",
+    "optimum[onnxruntime]>=1.17",
+]
+all = ["memsearch[google,voyage,ollama,local,anthropic,onnx]"]
 
 [project.scripts]
 memsearch = "memsearch.cli:cli"

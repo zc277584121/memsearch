@@ -12,14 +12,14 @@ if [ -z "$MEMSEARCH_CMD" ]; then
   fi
   # Warm up uvx cache with --upgrade to pull latest version
   # First run downloads packages (~2s); subsequent runs use cache (<0.3s)
-  uvx --upgrade memsearch --version &>/dev/null || true
+  uvx --upgrade --from 'memsearch[onnx]' memsearch --version &>/dev/null || true
   _detect_memsearch
 fi
 
 # Read resolved config and version for status display
-PROVIDER="openai"; MODEL=""; MILVUS_URI=""; VERSION=""
+PROVIDER="onnx"; MODEL=""; MILVUS_URI=""; VERSION=""
 if [ -n "$MEMSEARCH_CMD" ]; then
-  PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
+  PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
   MODEL=$($MEMSEARCH_CMD config get embedding.model 2>/dev/null || echo "")
   MILVUS_URI=$($MEMSEARCH_CMD config get milvus.uri 2>/dev/null || echo "")
   # "memsearch, version 0.1.10" → "0.1.10"
@@ -32,7 +32,7 @@ _required_env_var() {
     openai) echo "OPENAI_API_KEY" ;;
     google) echo "GOOGLE_API_KEY" ;;
     voyage) echo "VOYAGE_API_KEY" ;;
-    *) echo "" ;;  # ollama, local — no API key needed
+    *) echo "" ;;  # onnx, ollama, local — no API key needed
   esac
 }
 REQUIRED_KEY=$(_required_env_var "$PROVIDER")
@@ -49,8 +49,8 @@ if [ -n "$VERSION" ]; then
   LATEST=$(_json_val "$_PYPI_JSON" "info.version" "")
   if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ]; then
     # Detect install method to suggest the right upgrade command
-    if [ "$MEMSEARCH_CMD" = "uvx memsearch" ]; then
-      UPGRADE_CMD="uvx --upgrade memsearch --version"
+    if [[ "$MEMSEARCH_CMD" == *"uvx"* ]]; then
+      UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"
     else
       _MS_PATH=$(command -v memsearch 2>/dev/null || true)
       if [[ "$_MS_PATH" == *"uv/tools"* ]]; then

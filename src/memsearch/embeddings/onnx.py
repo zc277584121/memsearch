@@ -1,0 +1,119 @@
+"""ONNX embedding via onnxruntime (runs on CPU, no GPU required).
+
+Requires: ``pip install 'memsearch[onnx]'`` or ``uv add 'memsearch[onnx]'``
+No API key needed. Used as the default provider by ccplugin for zero-config
+memory search. Default model is a pre-quantized int8 bge-m3 ONNX export.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from functools import partial
+
+
+class OnnxEmbedding:
+    """ONNX Runtime embedding provider.
+
+    Supports two ONNX model formats:
+    - Models with ``dense_vecs`` output (e.g. gpahal/bge-m3-onnx-int8) — used directly
+    - Models with ``last_hidden_state`` output — CLS pooling + L2 normalize applied
+    """
+
+    _DEFAULT_BATCH_SIZE = 32
+
+    def __init__(
+        self,
+        model: str = "gpahal/bge-m3-onnx-int8",
+        *,
+        batch_size: int = 0,
+    ) -> None:
+        try:
+            import onnxruntime as ort
+        except ImportError as exc:
+            raise ImportError(
+                "ONNX embedding provider requires onnxruntime and optimum. "
+                "Install with: pip install 'memsearch[onnx]' "
+                "or: uv add 'memsearch[onnx]'"
+            ) from exc
+
+        from huggingface_hub import hf_hub_download, list_repo_files
+        from transformers import AutoTokenizer
+
+        self._tokenizer = AutoTokenizer.from_pretrained(model)
+
+        # Download ONNX model file from HuggingFace Hub
+        repo_files = list_repo_files(model)
+        onnx_files = [f for f in repo_files if f.endswith(".onnx")]
+        if not onnx_files:
+            raise ValueError(f"No .onnx files found in {model}")
+        # Prefer model_quantized.onnx > model.onnx > first .onnx file
+        if "model_quantized.onnx" in onnx_files:
+            onnx_file = "model_quantized.onnx"
+        elif "model.onnx" in onnx_files:
+            onnx_file = "model.onnx"
+        else:
+            onnx_file = onnx_files[0]
+        # Also download external data file if present
+        data_file = onnx_file + "_data"
+        if data_file in repo_files:
+            hf_hub_download(model, data_file)
+        model_path = hf_hub_download(model, onnx_file)
+
+        self._session = ort.InferenceSession(model_path)
+        self._output_names = [o.name for o in self._session.get_outputs()]
+        self._has_dense_vecs = "dense_vecs" in self._output_names
+        self._model = model
+
+        # Detect dimension from a probe embedding
+        import numpy as np
+
+        probe = self._encode(["hello"])
+        self._dimension = len(probe[0])
+        self._batch_size = batch_size if batch_size > 0 else self._DEFAULT_BATCH_SIZE
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        from .utils import batched_embed
+
+        return await batched_embed(texts, self._embed_batch, self._batch_size)
+
+    async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, partial(self._encode, texts))
+
+    def _encode(self, texts: list[str]) -> list[list[float]]:
+        import numpy as np
+
+        inputs = self._tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            return_tensors="np",
+            max_length=8192,
+        )
+        feed = {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+        }
+        outputs = self._session.run(None, feed)
+
+        if self._has_dense_vecs:
+            # Model outputs pre-pooled dense vectors (e.g. bge-m3-onnx-int8)
+            idx = self._output_names.index("dense_vecs")
+            embeddings = outputs[idx]
+        else:
+            # Fall back to CLS pooling on last_hidden_state
+            idx = self._output_names.index("last_hidden_state")
+            embeddings = outputs[idx][:, 0, :]
+
+        # L2 normalize
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        normalized = embeddings / norms
+        return normalized.tolist()

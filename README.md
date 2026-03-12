@@ -41,6 +41,7 @@ pip install memsearch
 <summary><b>Optional embedding providers</b></summary>
 
 ```bash
+pip install "memsearch[onnx]"        # ONNX Runtime — bge-m3 int8, CPU, no API key (recommended for ccplugin)
 pip install "memsearch[google]"      # Google Gemini
 pip install "memsearch[voyage]"      # Voyage AI
 pip install "memsearch[ollama]"      # Ollama (local)

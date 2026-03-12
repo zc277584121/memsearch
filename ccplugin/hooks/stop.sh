@@ -18,10 +18,10 @@ _required_env_var() {
     openai) echo "OPENAI_API_KEY" ;;
     google) echo "GOOGLE_API_KEY" ;;
     voyage) echo "VOYAGE_API_KEY" ;;
-    *) echo "" ;;  # ollama, local — no API key needed
+    *) echo "" ;;  # onnx, ollama, local — no API key needed
   esac
 }
-_PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "openai")
+_PROVIDER=$($MEMSEARCH_CMD config get embedding.provider 2>/dev/null || echo "onnx")
 _REQ_KEY=$(_required_env_var "$_PROVIDER")
 if [ -n "$_REQ_KEY" ] && [ -z "${!_REQ_KEY:-}" ]; then
   echo '{}'

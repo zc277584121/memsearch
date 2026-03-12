@@ -46,7 +46,7 @@ Markdown files → Scanner → Chunker → Embedder → MilvusStore
 - **`core.py`** — `MemSearch` class: the public Python API that orchestrates everything. Entry point for `index()`, `search()`, `compact()`, `watch()`.
 - **`store.py`** — `MilvusStore`: Milvus wrapper handling collection creation, upsert, hybrid search (dense cosine + BM25 sparse + RRF reranking), and cleanup. The `chunk_hash` (composite ID of source+lines+content+model) is the VARCHAR primary key.
 - **`chunker.py`** — Splits markdown by headings into `Chunk` dataclasses. SHA-256 content hash enables dedup. `compute_chunk_id()` generates composite IDs matching OpenClaw's format.
-- **`embeddings/__init__.py`** — `EmbeddingProvider` protocol + lazy-loading factory (`get_provider()`). Providers: openai, google, voyage, ollama, local.
+- **`embeddings/__init__.py`** — `EmbeddingProvider` protocol + lazy-loading factory (`get_provider()`). Providers: openai (default), google, voyage, ollama, local, onnx.
 - **`scanner.py`** — Walks directories to find `.md`/`.markdown` files, returns `ScannedFile` list.
 - **`config.py`** — Layered TOML config: dataclass defaults → `~/.memsearch/config.toml` → `.memsearch.toml` → CLI flags.
 - **`cli.py`** — Click CLI wrapping the Python API. All commands resolve config via `resolve_config()` then instantiate `MemSearch`.
@@ -99,6 +99,7 @@ When modifying hooks/skills, keep in mind:
 
 - **Markdown is the source of truth.** Milvus is a derived index, rebuildable anytime from `.md` files.
 - **Composite chunk ID as PK.** `hash(source:startLine:endLine:contentHash:model)` — enables natural dedup without a separate cache.
+- **ONNX bge-m3 as ccplugin default.** The ccplugin hooks default to `onnx` provider (bge-m3, CPU, no API key). The Python API still defaults to `openai`.
 - **Hybrid search by default.** Every collection has both dense vector and BM25 sparse fields. Search uses RRF to combine them.
 - **Remote Milvus `query()` requires a filter.** Use `chunk_hash != ""` as a "match all" filter when no filter is provided (Milvus Lite doesn't enforce this, but Milvus Server does).
 
@@ -124,6 +125,6 @@ They evolve independently — bump only the one that changed. If both changed, b
 ## Project Conventions
 
 - Uses `uv` + `pyproject.toml` for dependency management (not pip).
-- Optional deps via extras: `[google]`, `[voyage]`, `[ollama]`, `[local]`, `[all]`.
+- Optional deps via extras: `[google]`, `[voyage]`, `[ollama]`, `[local]`, `[onnx]`, `[all]`. ccplugin uses `memsearch[onnx]` for zero-config ONNX embedding.
 - Docs at `docs/` use mkdocs-material. The `site/` directory is build output — do not commit.
 - Always use `uv run python -m pytest` instead of `uv run pytest` to avoid system Python pytest conflicts.

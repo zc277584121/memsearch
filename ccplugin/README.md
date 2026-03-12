@@ -81,20 +81,17 @@ sequenceDiagram
 ### Install from Marketplace (recommended)
 
 ```bash
-# 1. Set your embedding API key (OpenAI is the default provider)
-export OPENAI_API_KEY="sk-..."
-
-# 2. In Claude Code, add the marketplace and install the plugin
+# 1. In Claude Code, add the marketplace and install the plugin
 /plugin marketplace add zilliztech/memsearch
 /plugin install memsearch
 
-# 3. Have a conversation, then exit. Check your memories:
+# 2. Have a conversation, then exit. Check your memories:
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 
-# 4. Start a new session — Claude automatically remembers!
+# 3. Start a new session — Claude automatically remembers!
 ```
 
-> **Note:** If memsearch is not already installed, the plugin will attempt to install it automatically on first run.
+> **Note:** The plugin defaults to the **ONNX bge-m3** embedding model — no API key required, runs locally on CPU. If memsearch is not already installed, the plugin will install `memsearch[onnx]` automatically via `uvx` on first run. To use a different embedding provider (e.g. OpenAI), set it with `memsearch config set embedding.provider openai` and export the required API key.
 
 ---
 
@@ -151,7 +148,7 @@ stateDiagram-v2
 
 Fires once when a Claude Code session begins. This hook:
 
-1. **Reads config and checks API key.** Runs `memsearch config get` to read the configured embedding provider, model, and Milvus URI. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`; `ollama` and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
+1. **Reads config and checks API key.** Runs `memsearch config get` to read the configured embedding provider, model, and Milvus URI. Checks whether the required API key is set for the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `VOYAGE_API_KEY`; `onnx`, `ollama`, and `local` need no key). If missing, shows an error in `systemMessage` and exits early.
 2. **Starts the watcher.** Launches `memsearch watch .memsearch/memory/` as a singleton background process (PID file lock prevents duplicates). The watcher monitors markdown files and auto-re-indexes on changes with a 1500ms debounce. Milvus Lite falls back to a one-time `memsearch index` at session start.
 3. **Writes a session heading.** Appends `## Session HH:MM` to today's memory file (`.memsearch/memory/YYYY-MM-DD.md`), creating the file if it does not exist.
 4. **Injects cold-start context.** Reads the last 30 lines from the 2 most recent daily logs and returns them as `additionalContext`. This gives Claude awareness of recent sessions, which helps it decide when to invoke the memory-recall skill.
@@ -373,7 +370,7 @@ Each file contains session summaries in plain markdown:
 | **Progressive disclosure** | **3-layer in subagent**: search → expand → transcript, all in forked context — only curated summary reaches main conversation | **3-layer**: `mem-search` skill for auto-recall; MCP tools for explicit drill-down |
 | **Session capture** | 1 async `claude -p --model haiku` call at session end | AI observation compression on every tool use (`PostToolUse` hook) + session summary |
 | **Vector backend** | [Milvus](https://milvus.io/) — hybrid search (dense + [BM25](https://en.wikipedia.org/wiki/Okapi_BM25) + RRF), scales from embedded to distributed cluster | [ChromaDB](https://www.trychroma.com/) — dense only; SQLite FTS5 for keyword search (separate, not fused) |
-| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, local | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
+| **Embedding model** | Pluggable: OpenAI, Google, Voyage, Ollama, local, ONNX (default: bge-m3 int8) | Fixed: all-MiniLM-L6-v2 (384-dim, WASM backend) |
 | **Storage format** | Transparent `.md` files — human-readable, git-friendly | SQLite database + ChromaDB binary |
 | **Data portability** | Copy `.memsearch/memory/*.md` and rebuild index | Export from SQLite + ChromaDB |
 | **Runtime dependency** | Python (`memsearch` CLI) + `claude` CLI | Node.js / Bun + Express worker service |
@@ -537,7 +534,8 @@ The plugin checks for the required API key at session start. If missing, memory 
 
 | Provider | Required environment variable |
 |----------|------------------------------|
-| `openai` (default) | `OPENAI_API_KEY` |
+| `onnx` (ccplugin default) | None (local, CPU) |
+| `openai` (Python API default) | `OPENAI_API_KEY` |
 | `google` | `GOOGLE_API_KEY` |
 | `voyage` | `VOYAGE_API_KEY` |
 | `ollama` | None (local) |
@@ -546,11 +544,9 @@ The plugin checks for the required API key at session start. If missing, memory 
 **Fix:** export the key for your configured provider:
 
 ```bash
-# For OpenAI (default)
+# The ccplugin defaults to onnx (no key needed). If you use OpenAI:
 export OPENAI_API_KEY="sk-..."
-
-# Or switch to a provider that needs no key
-memsearch config set embedding.provider ollama
+memsearch config set embedding.provider openai
 ```
 
 To make it permanent, add the export to your `~/.bashrc`, `~/.zshrc`, or equivalent.
@@ -568,9 +564,9 @@ UPDATE: v0.1.15 available — run: uv tool upgrade memsearch
 |---|---|
 | `pip install memsearch` | `pip install --upgrade memsearch` |
 | `uv tool install memsearch` | `uv tool upgrade memsearch` |
-| `uvx` (auto) | `uvx --upgrade memsearch --version` |
+| `uvx` (auto) | `uvx --upgrade --from 'memsearch[onnx]' memsearch --version` |
 
-> **Note:** `uvx` users get automatic upgrades — the plugin runs `uvx --upgrade` on every bootstrap. The `UPDATE` hint primarily helps `pip`/`uv tool` users who have no automatic update mechanism.
+> **Note:** `uvx` users get automatic upgrades — the plugin runs `uvx --upgrade` on every bootstrap with the `[onnx]` extra. The `UPDATE` hint primarily helps `pip`/`uv tool` users who have no automatic update mechanism.
 
 ---
 
