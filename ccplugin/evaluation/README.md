@@ -89,6 +89,17 @@ Ranked by Chinese Recall@5 (primary metric):
 5. **Q5 quantization destroys embedding quality** — Qwen3-Embedding-8B Q5 scored last despite being 5.4GB
 6. **OpenAI large offers marginal improvement** — only +3-4% over OpenAI small, at double the cost
 
+## Why We Switched to ONNX bge-m3
+
+The previous ccplugin default was OpenAI `text-embedding-3-small`, which required users to obtain and configure an API key before the plugin would work. This created friction for new users and incurred per-token API costs. The switch to ONNX bge-m3 int8 was motivated by:
+
+- **No API key required** — zero-config experience, the plugin works immediately after installation
+- **Runs entirely on CPU** — no GPU needed, accessible to all development machines
+- **Small model size** — int8 quantization reduces the model from 2.2GB to 558MB, auto-downloaded on first use
+- **Comparable quality** — only ~1% lower than OpenAI `text-embedding-3-small` on our benchmark, and actually outperforms it on Chinese retrieval (zh R@5: 0.776 vs 0.717)
+- **Completely free** — no per-token API cost, all computation is local
+- **Lightweight dependencies** — `onnxruntime` + `tokenizers` + `huggingface-hub` (~200MB) vs `torch` + `sentence-transformers` (~2GB+)
+
 ## Conclusion
 
 Based on the benchmark results, **`gpahal/bge-m3-onnx-int8`** stands out as the best practical choice and is adopted as the ccplugin default embedding model:
@@ -104,3 +115,21 @@ Based on the benchmark results, **`gpahal/bge-m3-onnx-int8`** stands out as the 
 - **Python API users**: not affected. The Python API default remains `openai` / `text-embedding-3-small`
 - **ccplugin users**: the plugin hooks now default to `onnx` provider. Users with existing memory indexed by OpenAI embeddings will need to re-index (`memsearch index --force`) after switching, since the embedding dimensions differ (1024 vs 1536)
 - **Explicit config**: users who have set `embedding.provider` in `.memsearch.toml` or `~/.memsearch/config.toml` are unaffected
+
+## Upgrade Guide
+
+For existing ccplugin users who want to switch from OpenAI to the new ONNX default:
+
+```bash
+# Switch provider to ONNX
+memsearch config set embedding.provider onnx
+
+# Re-index all memory files (required — embedding dimensions differ)
+memsearch index .memsearch/memory/ --force
+```
+
+The ONNX model (~558MB) will be downloaded automatically on first use and cached at `~/.cache/huggingface/hub/`. To pre-download it:
+
+```bash
+uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
+```
