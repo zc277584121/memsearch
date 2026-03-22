@@ -60,6 +60,7 @@ mem = MemSearch(paths=["./memory"])
 
 await mem.index()                                      # index markdown files
 results = await mem.search("Redis config", top_k=3)    # semantic search
+scoped = await mem.search("pricing", top_k=3, source_prefix="./memory/product")
 print(results[0]["content"], results[0]["score"])       # content + similarity
 ```
 
@@ -260,6 +261,7 @@ Hybrid search (dense vector + BM25 full-text) with RRF reranking:
 ```bash
 memsearch search "how to configure Redis caching"
 memsearch search "auth flow" --top-k 10 --json-output
+memsearch search "pricing" --source-prefix ./memory/product
 ```
 
 ### Live Sync — `watch`
@@ -277,8 +279,10 @@ Compress indexed chunks into a condensed markdown summary using an LLM:
 
 ```bash
 memsearch compact
-memsearch compact --llm-provider anthropic --source ./memory/old-notes.md
+memsearch compact --llm-provider anthropic --source /Users/me/projects/myproject/.memsearch/memory/old-notes.md
 ```
+
+`--source` should be the same absolute file path stored during indexing; relative paths and directory paths will not match existing chunks.
 
 ### Utilities — `stats` / `reset`
 
