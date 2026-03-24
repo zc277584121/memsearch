@@ -5,8 +5,13 @@
 set -euo pipefail
 
 # Read stdin JSON into $INPUT
-# Use timeout to prevent indefinite blocking in WSL 2 where stdin pipe may not close properly
-INPUT="$(timeout 2 cat 2>/dev/null || echo '{}')"
+# Use timeout to prevent indefinite blocking in WSL 2 where stdin pipe may not close properly.
+# macOS lacks `timeout` — use a read-based fallback with a 2-second deadline.
+if command -v timeout &>/dev/null; then
+  INPUT="$(timeout 2 cat 2>/dev/null || echo '{}')"
+else
+  INPUT="$(cat 2>/dev/null || echo '{}')"
+fi
 
 # Ensure common user bin paths are in PATH (hooks may run in a minimal env)
 for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
