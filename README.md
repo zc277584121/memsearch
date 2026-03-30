@@ -56,10 +56,14 @@ ls .memsearch/memory/          # you should see daily .md files
 cat .memsearch/memory/$(date +%Y-%m-%d).md
 ```
 
-**Recall memories** — Claude searches automatically when relevant, or trigger manually:
+**Recall memories** — two ways to trigger:
 
 ```
 /memory-recall what did we discuss about Redis?
+```
+Or just ask naturally — Claude auto-invokes the skill when it senses the question needs history:
+```
+We discussed Redis caching before, what was the TTL we chose?
 ```
 
 > 📖 [Claude Code Plugin docs](https://zilliztech.github.io/memsearch/platforms/claude-code/) · [Troubleshooting](https://zilliztech.github.io/memsearch/platforms/claude-code-troubleshooting/)
@@ -83,10 +87,14 @@ ls ~/.openclaw/workspace/.memsearch/memory/
 ls ~/.openclaw/workspace-work/.memsearch/memory/
 ```
 
-**Recall memories** — the LLM calls `memory_search` automatically when it needs history, or ask explicitly:
+**Recall memories** — two ways to trigger:
 
 ```
-Search your memory for what we discussed about batch size
+/memory-recall what was the batch size limit we set?
+```
+Or just ask naturally — the LLM auto-invokes memory tools when it senses the question needs history:
+```
+We discussed batch size limits before, what did we decide?
 ```
 
 > 📖 [OpenClaw Plugin docs](https://zilliztech.github.io/memsearch/platforms/openclaw/)

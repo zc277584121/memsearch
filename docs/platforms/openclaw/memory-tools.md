@@ -14,6 +14,22 @@ The plugin registers three tools via OpenClaw's `registerTool` factory pattern. 
 
 ---
 
+## How to Trigger
+
+**Manual invocation** — explicitly invoke the skill with a query:
+
+```
+/memory-recall what was the approach we took for the caching layer?
+```
+
+**Auto invocation** — just ask naturally, the LLM auto-invokes memory tools when it senses the question needs history:
+
+```
+We discussed caching strategies last week, what did we decide?
+```
+
+---
+
 ## Three-Layer Progressive Recall
 
 ```mermaid

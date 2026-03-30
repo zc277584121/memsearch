@@ -81,15 +81,21 @@ The user sees a concise, contextual answer. The intermediate search results, chu
 
 ---
 
-## Manual Invocation
+## How to Trigger
 
-Users can also manually invoke the skill:
+**Manual invocation** — explicitly invoke the skill with a query:
 
 ```
-/memory-recall <query>
+/memory-recall what did we discuss about the auth refactor?
 ```
 
-This is useful when:
+**Auto invocation** — just ask naturally, Claude auto-invokes the skill when it senses the question needs history:
+
+```
+We refactored the auth module last week, what was the approach?
+```
+
+Manual invocation is useful when:
 
 - You want to explicitly search past sessions for a specific topic
 - Claude doesn't automatically trigger the recall (some questions don't obviously need historical context)
