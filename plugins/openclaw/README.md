@@ -53,6 +53,18 @@ openclaw tui
 | Each turn ends | Conversation summarized (bullet-points) and saved to daily `.md` |
 | LLM needs history | Calls `memory_search` / `memory_get` / `memory_transcript` tools |
 
+### Recall memories
+
+Two ways to trigger:
+
+```
+/memory-recall what was the caching strategy we chose?
+```
+Or just ask naturally — the LLM auto-invokes memory tools when it senses the question needs history:
+```
+We discussed caching strategies before, what did we decide?
+```
+
 ### Three-layer progressive recall
 
 The plugin registers three tools the LLM uses progressively:

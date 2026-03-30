@@ -220,7 +220,17 @@ When Claude detects that a user's question could benefit from past context, it a
 
 The main agent only sees the final summary — all intermediate search results, raw expand output, and transcript parsing happen inside the subagent.
 
-Users can also manually invoke the skill with `/memory-recall <query>` if Claude doesn't trigger it automatically.
+Users can manually invoke the skill:
+
+```
+/memory-recall what did we discuss about the auth refactor?
+```
+
+Or just ask naturally — Claude auto-invokes the skill when it senses the question needs history:
+
+```
+We refactored the auth module last week, what was the approach?
+```
 
 ### L1: Search
 
