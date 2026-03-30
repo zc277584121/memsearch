@@ -1,5 +1,5 @@
 {
-  "name": "memsearch-opencode",
+  "name": "@zilliz/memsearch-opencode",
   "version": "0.1.0",
   "description": "memsearch plugin for OpenCode — semantic memory search across sessions",
   "type": "module",
@@ -7,6 +7,12 @@
   "exports": {
     ".": "./index.ts"
   },
+  "files": [
+    "index.ts",
+    "scripts/",
+    "skills/",
+    "README.md"
+  ],
   "keywords": [
     "opencode",
     "opencode-plugin",
@@ -22,7 +28,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/zc277584121/memsearch",
+    "url": "https://github.com/zilliztech/memsearch",
     "directory": "plugins/opencode"
   },
   "devDependencies": {

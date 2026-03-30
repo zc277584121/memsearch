@@ -105,22 +105,41 @@ When modifying hooks/skills, keep in mind:
 
 ## Versioning & Release
 
-**Two independent version numbers:**
-- **memsearch** (PyPI library): version in `pyproject.toml` (e.g. `0.1.13`)
-- **Claude Code plugin**: version in `plugins/claude-code/.claude-plugin/plugin.json` (e.g. `0.2.0`)
+**Five independent version numbers** — bump only the ones that changed:
 
-They evolve independently — bump only the one that changed. If both changed, bump both.
+| Component | Version file | Current | Publish channel |
+|-----------|-------------|---------|-----------------|
+| **memsearch** (PyPI) | `pyproject.toml` | 0.1.x | PyPI (automated via GitHub Actions) |
+| **Claude Code plugin** | `plugins/claude-code/.claude-plugin/plugin.json` | 0.2.x | Clone/symlink (no marketplace) |
+| **OpenClaw plugin** | `plugins/openclaw/package.json` | 0.1.x | ClawHub (`clawhub package publish`) |
+| **OpenCode plugin** | `plugins/opencode/package.json` | 0.1.x | npm (`npm publish`, not yet published) |
+| **Codex CLI plugin** | *(none)* | — | `install.sh` (no version management) |
 
-**memsearch release flow:**
+**memsearch (PyPI) release flow:**
 1. Bump `version` in `pyproject.toml`
 2. Commit and push
 3. Create a git tag matching the version: `git tag v0.1.14`
 4. Push the tag: `git push --tags`
 5. GitHub Actions (`release.yml`) automatically builds and publishes to PyPI
 
-**Claude Code plugin versioning:**
+**Claude Code plugin:**
 - Bump `version` in `plugins/claude-code/.claude-plugin/plugin.json` when hooks, skills, or plugin config change
-- No automated publish — users install the plugin by cloning or symlinking
+- No automated publish — users install by cloning or symlinking (`claude --plugin-dir`)
+
+**OpenClaw plugin (ClawHub):**
+- Bump `version` in `plugins/openclaw/package.json`
+- Publish: `clawhub package publish plugins/openclaw/ --family code-plugin --source-repo zilliztech/memsearch --source-commit <SHA> --source-path plugins/openclaw --source-ref main`
+- Users install: `openclaw plugins install clawhub:memsearch`
+- Requires `clawhub login` (token stored on publish machine)
+
+**OpenCode plugin (npm):**
+- Bump `version` in `plugins/opencode/package.json`
+- Publish: `cd plugins/opencode && npm publish --access public --otp=<code>`
+- Users install: `npm install @zilliz/memsearch-opencode` then symlink to `~/.config/opencode/plugins/`
+
+**Codex CLI plugin:**
+- No version file — users run `bash plugins/codex/scripts/install.sh` to install
+- No marketplace or registry
 
 ## Project Conventions
 
