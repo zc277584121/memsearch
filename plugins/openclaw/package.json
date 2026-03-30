@@ -1,10 +1,17 @@
 {
   "name": "memsearch",
   "version": "0.1.0",
-  "description": "Semantic memory search plugin for OpenClaw — remembers what you worked on across sessions",
+  "description": "Semantic memory search plugin for OpenClaw — persistent cross-session memory powered by Milvus vector search. Automatically captures conversation summaries and recalls relevant context.",
   "type": "module",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.3.11"
+    },
+    "build": {
+      "openclawVersion": "2026.3.23",
+      "pluginSdkVersion": "2026.3.23"
+    }
   },
   "peerDependencies": {
     "openclaw": ">=2026.3.11"
