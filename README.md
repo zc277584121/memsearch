@@ -319,19 +319,30 @@ User: "What did we discuss about batch size?"
 ### 📦 Installation
 
 ```bash
-# pip
-pip install memsearch
+# Install as a global CLI tool — recommended when you mainly use the
+# `memsearch` command or any of the agent plugins (Claude Code, Codex,
+# OpenClaw, OpenCode), which all shell out to the CLI.
+uv tool install memsearch       # via uv
+pipx install memsearch          # via pipx
+pip install memsearch           # plain pip
 
-# or uv (recommended)
-uv add memsearch
+# Install as a project dependency — use this if you want to import
+# `memsearch` from your own Python code (e.g. via the MemSearch class).
+uv add memsearch                # via uv, adds to pyproject.toml
+pip install memsearch           # into an activated venv
 ```
 
 <details>
 <summary><b>Optional embedding providers</b></summary>
 
 ```bash
-pip install "memsearch[onnx]"    # Local ONNX (recommended, no API key)
-# or: uv add "memsearch[onnx]"
+# As a CLI tool (recommended — local ONNX, no API key)
+uv tool install "memsearch[onnx]"
+pipx install "memsearch[onnx]"
+pip install "memsearch[onnx]"
+
+# As a project dependency
+uv add "memsearch[onnx]"
 
 # Other options: [openai], [google], [voyage], [jina], [mistral], [ollama], [local], [all]
 ```
