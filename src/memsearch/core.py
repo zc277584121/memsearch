@@ -371,8 +371,6 @@ class MemSearch:
         loop = asyncio.new_event_loop()
 
         def _on_change(event_type: str, file_path: Path) -> None:
-            from pymilvus.exceptions import MilvusException
-
             try:
                 if event_type == "deleted":
                     self._store.delete_by_source(str(file_path))
@@ -383,8 +381,11 @@ class MemSearch:
                 logger.info(summary)
                 if on_event is not None:
                     on_event(event_type, summary, file_path)
-            except MilvusException as e:
-                logger.warning("Milvus error during watch callback: %s", e)
+            except Exception:
+                # Watch is a long-running daemon callback — swallow any failure
+                # (network blips, provider 500s, malformed embeddings, disk
+                # errors, etc.) so a single bad file cannot crash the watcher.
+                logger.exception("Failed to process %s event for %s", event_type, file_path)
 
         fw_kwargs: dict[str, Any] = {}
         if debounce_ms is not None:
