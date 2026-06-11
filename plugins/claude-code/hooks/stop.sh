@@ -142,6 +142,7 @@ Transcript:
 ${PARSED}"
   SUMMARY=$(MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
     --strict-mcp-config \
+    --tools "" \
     --model "$SUMMARIZE_MODEL" \
     --no-session-persistence \
     --no-chrome \

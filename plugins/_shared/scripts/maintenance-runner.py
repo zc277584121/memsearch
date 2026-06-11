@@ -143,7 +143,7 @@ def run_native_provider(ctx, prompt: str) -> str:
     env = {**os.environ, "MEMSEARCH_NO_WATCH": "1"}
 
     if ctx.platform == "claude-code":
-        cmd = ["claude", "-p", "--strict-mcp-config", "--no-session-persistence", "--no-chrome"]
+        cmd = ["claude", "-p", "--strict-mcp-config", "--tools", "", "--no-session-persistence", "--no-chrome"]
         if model:
             cmd += ["--model", model]
         cmd += [
