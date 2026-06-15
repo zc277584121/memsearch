@@ -75,7 +75,7 @@ def skills_root(mem_root: Path) -> Path:
 
     Named ``skill-candidates`` (not ``skills``) so a human browsing the project
     does not mistake these evolving drafts for the live, installed skills under
-    ``.claude/skills`` / ``.codex/skills`` / ``.agents/skills``.
+    ``.claude/skills`` / ``.agents/skills`` / ``.openclaw/skills``.
     """
     return mem_root / "skill-candidates"
 
