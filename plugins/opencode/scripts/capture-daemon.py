@@ -459,6 +459,28 @@ def summarize_with_llm(
     return None
 
 
+def wake_maintenance(project_dir: str) -> None:
+    """Start maintenance in a hook-disabled child environment."""
+    runner = Path(__file__).resolve().parent / "maintenance-runner.py"
+    subprocess.Popen(
+        [
+            "python3",
+            str(runner),
+            "--platform",
+            "opencode",
+            "--project-dir",
+            project_dir,
+            "--memsearch-dir",
+            os.path.join(project_dir, ".memsearch"),
+        ],
+        env={**os.environ, "MEMSEARCH_NO_WATCH": "1", "MEMSEARCH_DISABLE": "1"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
 def get_session_ids(conn: sqlite3.Connection, project_dir: str) -> list[str]:
     """Find OpenCode sessions that belong to the given project directory."""
     sessions = conn.execute(
@@ -790,16 +812,8 @@ def main() -> None:
                 )
 
             if any_new:
-                os.system(
-                    f"{args.memsearch_cmd} index '{memory_dir}' "
-                    f"--collection {args.collection_name} &"
-                )
-                os.system(
-                    f"python3 {shlex.quote(str(Path(__file__).resolve().parent / 'maintenance-runner.py'))} "
-                    f"--platform opencode "
-                    f"--project-dir {shlex.quote(args.project_dir)} "
-                    f"--memsearch-dir {shlex.quote(os.path.join(args.project_dir, '.memsearch'))} &"
-                )
+                os.system(f"{args.memsearch_cmd} index '{memory_dir}' --collection {args.collection_name} &")
+                wake_maintenance(args.project_dir)
         except Exception:
             pass
         finally:

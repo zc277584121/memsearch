@@ -287,6 +287,30 @@ def _describe_arg(arg: str, limit: int = 120) -> str:
     return f"<arg:{len(arg)} chars>"
 
 
+_CLAUDE_SAFE_MODE_ARGS: list[str] | None = None
+
+
+def claude_safe_mode_args() -> list[str]:
+    """Return Claude args that suppress hooks when supported."""
+    global _CLAUDE_SAFE_MODE_ARGS
+    if _CLAUDE_SAFE_MODE_ARGS is not None:
+        return _CLAUDE_SAFE_MODE_ARGS
+    try:
+        result = subprocess.run(
+            ["claude", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        _CLAUDE_SAFE_MODE_ARGS = []
+    else:
+        help_text = f"{result.stdout}\n{result.stderr}"
+        _CLAUDE_SAFE_MODE_ARGS = ["--safe-mode"] if "--safe-mode" in help_text else []
+    return _CLAUDE_SAFE_MODE_ARGS
+
+
 def extract_task_json_output(output: str) -> str:
     """Extract the first maintenance JSON object from noisy host output."""
     for line in output.splitlines():
@@ -396,7 +420,14 @@ def run_native_provider(ctx, prompt: str) -> str:
     env = {**os.environ, "MEMSEARCH_NO_WATCH": "1"}
 
     if ctx.platform == "claude-code":
-        cmd = ["claude", "-p", "--strict-mcp-config", "--no-session-persistence", "--no-chrome"]
+        cmd = [
+            "claude",
+            "-p",
+            *claude_safe_mode_args(),
+            "--strict-mcp-config",
+            "--no-session-persistence",
+            "--no-chrome",
+        ]
         # Skill distillation needs to read original transcripts for exact commands.
         # Open a narrow hole — Bash limited to the two read-only memsearch drill
         # commands — only for that task; other maintenance keeps all tools off.
@@ -412,6 +443,7 @@ def run_native_provider(ctx, prompt: str) -> str:
             prompt,
         ]
         env["CLAUDECODE"] = ""
+        env["MEMSEARCH_DISABLE"] = "1"
         return run_command(cmd, env=env, cwd=ctx.project_dir, timeout=120)
 
     if ctx.platform == "codex":

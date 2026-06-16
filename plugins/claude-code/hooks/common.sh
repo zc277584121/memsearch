@@ -4,6 +4,14 @@
 
 set -euo pipefail
 
+# Internal maintenance/summarization subprocesses may invoke Claude Code again.
+# When they do, the child process must not run memsearch hooks, or it can write
+# empty nested session headings and keep maintenance inputs changing forever.
+if [ "${MEMSEARCH_DISABLE:-}" = "1" ]; then
+  echo '{}'
+  exit 0
+fi
+
 # Read stdin JSON into $INPUT
 # Use timeout to prevent indefinite blocking in WSL 2 where stdin pipe may not close properly.
 # macOS lacks `timeout` — use perl alarm(2) as a portable fallback with a 2-second deadline.

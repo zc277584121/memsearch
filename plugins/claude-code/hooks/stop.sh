@@ -140,7 +140,12 @@ elif command -v claude &>/dev/null; then
 
 Transcript:
 ${PARSED}"
-  SUMMARY=$(MEMSEARCH_NO_WATCH=1 CLAUDECODE= claude -p \
+  CLAUDE_SAFE_MODE_ARGS=()
+  if claude --help 2>/dev/null | grep -q -- '--safe-mode'; then
+    CLAUDE_SAFE_MODE_ARGS=(--safe-mode)
+  fi
+  SUMMARY=$(MEMSEARCH_NO_WATCH=1 MEMSEARCH_DISABLE=1 CLAUDECODE= claude -p \
+    "${CLAUDE_SAFE_MODE_ARGS[@]}" \
     --strict-mcp-config \
     --tools "" \
     --model "$SUMMARIZE_MODEL" \

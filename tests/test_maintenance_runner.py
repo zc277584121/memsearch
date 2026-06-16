@@ -94,6 +94,7 @@ def test_codex_native_runner_uses_profile_and_last_message(tmp_path: Path, monke
     assert captured["cmd"][0:2] == ["codex", "exec"]
     assert captured["cmd"][captured["cmd"].index("-p") + 1] == "zilliz"
     assert "-o" in captured["cmd"]
+    assert "features.hooks=false" in captured["cmd"]
     assert captured["env"]["MEMSEARCH_IN_STOP_WORKER"] == "1"
 
 
@@ -117,6 +118,7 @@ def test_claude_native_runner_passes_prompt_as_user_input(tmp_path: Path, monkey
     result = runner.run_native_provider(ctx, "maintenance prompt")
 
     assert json.loads(result) == {"action": "none", "reason": "ok"}
+    assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
     assert captured["cmd"][0:2] == ["claude", "-p"]
     assert captured["cmd"][-1] == "maintenance prompt"
     assert captured["cmd"][captured["cmd"].index("--system-prompt") + 1] != "maintenance prompt"
@@ -201,6 +203,7 @@ def test_opencode_native_runner_uses_sanitized_isolated_config(tmp_path: Path, m
     assert captured["env"]["OPENCODE_CONFIG_DIR"] == ""
     assert captured["env"]["OPENCODE_CONFIG_CONTENT"] == ""
     assert captured["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "true"
+    assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
     assert isolated_config["model"] == "dir/model"
     assert isolated_config["username"] == "from-content"
     assert isolated_config["provider"]["openai"]["apiKey"] == f"{{file:{config_dir / 'token.txt'}}}"

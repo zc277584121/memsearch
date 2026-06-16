@@ -142,6 +142,41 @@ def test_opencode_isolated_config_sanitizes_plugins(tmp_path: Path, monkeypatch)
     assert not (isolated_root / "opencode" / "opencode.jsonc").exists()
 
 
+def test_opencode_daemon_wake_maintenance_disables_hooks(tmp_path: Path, monkeypatch) -> None:
+    project = tmp_path / "repo"
+    project.mkdir()
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs["env"]
+        captured["stdin"] = kwargs["stdin"]
+        captured["stdout"] = kwargs["stdout"]
+        captured["stderr"] = kwargs["stderr"]
+        captured["start_new_session"] = kwargs["start_new_session"]
+
+        class Process:
+            pass
+
+        return Process()
+
+    monkeypatch.setattr(capture_daemon.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("MEMSEARCH_NO_WATCH", "0")
+    monkeypatch.delenv("MEMSEARCH_DISABLE", raising=False)
+
+    capture_daemon.wake_maintenance(str(project))
+
+    assert captured["cmd"][:4] == ["python3", str(SCRIPT_DIR / "maintenance-runner.py"), "--platform", "opencode"]
+    assert captured["cmd"][captured["cmd"].index("--project-dir") + 1] == str(project)
+    assert captured["cmd"][captured["cmd"].index("--memsearch-dir") + 1] == str(project / ".memsearch")
+    assert captured["env"]["MEMSEARCH_NO_WATCH"] == "1"
+    assert captured["env"]["MEMSEARCH_DISABLE"] == "1"
+    assert captured["stdin"] == capture_daemon.subprocess.DEVNULL
+    assert captured["stdout"] == capture_daemon.subprocess.DEVNULL
+    assert captured["stderr"] == capture_daemon.subprocess.DEVNULL
+    assert captured["start_new_session"] is True
+
+
 def _make_opencode_db(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
