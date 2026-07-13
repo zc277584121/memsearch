@@ -78,12 +78,14 @@ if [ -n "$VERSION" ]; then
     if [ -n "$_MS_BIN" ]; then
       _MS_REAL=$(readlink -f "$_MS_BIN" 2>/dev/null || python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$_MS_BIN" 2>/dev/null || echo "$_MS_BIN")
     fi
-    if [[ "$MEMSEARCH_CMD" == *"uvx"* ]] || [[ "$_MS_REAL" == *"uv/tools"* ]]; then
-      UPGRADE_CMD="uv tool install -U 'memsearch[onnx]'"
+    if [[ "$MEMSEARCH_CMD" == *"uvx"* ]]; then
+      UPGRADE_CMD="uvx --upgrade --from 'memsearch[onnx]' memsearch --version"
+    elif [[ "$_MS_REAL" == *"uv/tools"* ]]; then
+      UPGRADE_CMD="uv tool upgrade memsearch"
     elif [[ "$_MS_REAL" == *"/pipx/venvs/memsearch/"* ]] || { command -v pipx &>/dev/null && pipx list 2>/dev/null | grep -Eq "package memsearch([ ,]|$)"; }; then
       UPGRADE_CMD="pipx upgrade memsearch"
     else
-      UPGRADE_CMD="pip install --upgrade 'memsearch[onnx]'"
+      UPGRADE_CMD="pip install --upgrade memsearch"
     fi
     UPDATE_HINT=" | UPDATE: v${LATEST} available — run: ${UPGRADE_CMD}"
   fi

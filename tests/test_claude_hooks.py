@@ -105,6 +105,87 @@ exit 0
     assert "Session 09:02" not in context
 
 
+def test_claude_session_start_uv_tool_upgrade_hint_preserves_extras(tmp_path: Path) -> None:
+    script = Path("plugins/claude-code/hooks/session-start.sh")
+    home = tmp_path / "home"
+    fake_bin = tmp_path / "bin"
+    uv_tool_bin = home / ".local" / "share" / "uv" / "tools" / "memsearch" / "bin"
+    memsearch_dir = tmp_path / ".memsearch"
+    home.mkdir()
+    fake_bin.mkdir()
+    uv_tool_bin.mkdir(parents=True)
+    (home / ".memsearch").mkdir()
+    (home / ".memsearch" / "config.toml").write_text("", encoding="utf-8")
+
+    fake_memsearch = uv_tool_bin / "memsearch"
+    fake_memsearch.write_text(
+        """#!/usr/bin/env bash
+if [ "$1" = "config" ] && [ "$2" = "get" ]; then
+  case "$3" in
+    embedding.provider) echo "voyage" ;;
+    embedding.model) echo "voyage-3-lite" ;;
+    milvus.uri) echo "http://localhost:19530" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "--version" ]; then
+  echo "memsearch, version 0.4.12"
+  exit 0
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_memsearch.chmod(0o755)
+    (fake_bin / "memsearch").symlink_to(fake_memsearch)
+
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text(
+        """#!/usr/bin/env bash
+echo '{"info":{"version":"0.4.13"}}'
+""",
+        encoding="utf-8",
+    )
+    fake_curl.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "CLAUDE_PROJECT_DIR": str(tmp_path),
+        "MEMSEARCH_DIR": str(memsearch_dir),
+        "MEMSEARCH_NO_WATCH": "1",
+        "VOYAGE_API_KEY": "test-key",
+    }
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
+
+    status = json.loads(result.stdout)["systemMessage"]
+    assert "UPDATE: v0.4.13 available" in status
+    assert "uv tool upgrade memsearch" in status
+    assert "uv tool install -U 'memsearch[onnx]'" not in status
+
+
+def test_session_start_upgrade_hints_do_not_clobber_extras() -> None:
+    for script in (
+        Path("plugins/claude-code/hooks/session-start.sh"),
+        Path("plugins/codex/hooks/session-start.sh"),
+    ):
+        source = script.read_text(encoding="utf-8")
+
+        assert "uv tool install -U 'memsearch[onnx]'" not in source
+        assert "pip install --upgrade 'memsearch[onnx]'" not in source
+        assert "uv tool upgrade memsearch" in source
+        assert "pip install --upgrade memsearch" in source
+
+
 def test_claude_stop_hook_writes_summary_without_safe_mode_flag(tmp_path: Path) -> None:
     script = Path("plugins/claude-code/hooks/stop.sh")
     plugin_root = Path("plugins/claude-code").resolve()
