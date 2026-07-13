@@ -109,7 +109,11 @@ function recentMemoryPreviewLines(content: string, maxLines: number): string[] {
   return sections.flat().slice(-maxLines);
 }
 
-function getRecentMemories(
+export function isDailyJournalFile(file: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}\.md$/.test(file);
+}
+
+export function getRecentMemories(
   memDir: string,
   count = 2,
   maxLinesPerFile = 30
@@ -117,7 +121,7 @@ function getRecentMemories(
   if (!existsSync(memDir)) return "";
 
   const files = readdirSync(memDir)
-    .filter((f) => f.endsWith(".md"))
+    .filter(isDailyJournalFile)
     .sort()
     .slice(-count);
 

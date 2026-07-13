@@ -52,6 +52,16 @@ def test_claude_session_start_recent_memory_skips_empty_sessions(tmp_path: Path)
 """,
         encoding="utf-8",
     )
+    (memory / "zzz-scratch.md").write_text(
+        """# Scratch
+
+## Session 10:00
+
+### 10:00
+- Scratch content should not displace daily journals.
+""",
+        encoding="utf-8",
+    )
 
     fake_memsearch = fake_bin / "memsearch"
     fake_memsearch.write_text(
@@ -101,6 +111,7 @@ exit 0
 
     assert "User discussed a useful migration note." in context
     assert "Session 09:01" in context
+    assert "Scratch content should not displace daily journals." not in context
     assert "Session 09:00" not in context
     assert "Session 09:02" not in context
 
@@ -184,6 +195,17 @@ def test_session_start_upgrade_hints_do_not_clobber_extras() -> None:
         assert "pip install --upgrade 'memsearch[onnx]'" not in source
         assert "uv tool upgrade memsearch" in source
         assert "pip install --upgrade memsearch" in source
+
+
+def test_session_start_recent_memory_selects_daily_journals() -> None:
+    for script in (
+        Path("plugins/claude-code/hooks/session-start.sh"),
+        Path("plugins/codex/hooks/session-start.sh"),
+    ):
+        source = script.read_text(encoding="utf-8")
+
+        assert "DAILY_JOURNAL_PATTERN" in source
+        assert "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md" in source
 
 
 def test_claude_stop_hook_writes_summary_without_safe_mode_flag(tmp_path: Path) -> None:
