@@ -217,9 +217,11 @@ through the DSH logger.
       loads automatically.
   The project directory is resolved from the session id (its durable cwd), so
   the panel reflects the project of the session you are viewing on a
-  multi-project web surface. Headless / TUI profiles have no browser: the host
-  routes are simply not registered (no `webServer`), and everything else is
-  unchanged.
+  multi-project web surface. The routes are registered once the DSH web server
+  service becomes available (the memsearch plugin mounts in the base bundle
+  layer, before the web server starts; `apply` retries on a 1s unref'd timer).
+  Headless / TUI profiles have no browser: the `webServer` service never
+  appears, no routes are registered, and everything else is unchanged.
 
 ## Uninstall
 

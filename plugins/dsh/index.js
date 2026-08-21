@@ -468,6 +468,98 @@ function resolveSkillInstallTarget(memsearchCmd, projectDir) {
   return join(process.env.HOME || '', '.agents', 'skills')
 }
 
+/**
+ * Register the browser-facing skill-review JSON routes on the web server.
+ *
+ * The memsearch plugin mounts early (base bundle layer), before the DSH web
+ * server service is provided, so this must be called with the service already
+ * available — `apply` retries until it is (see the wait loop) and headless
+ * profiles never see it, so no routes are registered there.
+ */
+function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
+  const readJsonBody = (req) => new Promise((resolve) => {
+    let body = ''
+    req.on('data', (chunk) => { body += chunk })
+    req.on('end', () => {
+      try { resolve(JSON.parse(body || '{}')) } catch { resolve({}) }
+    })
+  })
+  const sendJson = (res, status, payload) => {
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(payload))
+  }
+  // Project dir for a session id (its durable cwd), else the process cwd.
+  // A long-lived web surface serves many projects, so we never assume the
+  // boot dir is the only one (mirrors the capture path).
+  const projectDirForSession = (sessionId) => {
+    const agent = ctx.agents?.get?.(sessionId)
+    return projectDirFor(agent?.session)
+  }
+
+  webServer.register({
+    kind: 'exact',
+    path: '/memsearch-dsh/skill-candidates',
+    handler: (req, res) => {
+      if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
+      const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
+      const projectDir = projectDirForSession(sessionId)
+      const memoryDir = memsearchDirFor(projectDir)
+      sendJson(res, 200, { candidates: listSkillCandidates(memoryDir) })
+    },
+  })
+
+  webServer.register({
+    kind: 'exact',
+    path: '/memsearch-dsh/skill-review',
+    handler: async (req, res) => {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' })
+      const body = await readJsonBody(req)
+      const { sessionId, name, action } = body
+      if (!name || (action !== 'review' && action !== 'install')) {
+        return sendJson(res, 400, { error: 'name and action (review|install) are required' })
+      }
+      if (action === 'review') {
+        // Non-blocking: queue a user message into the live agent's inbox.
+        // The agent picks it up on the next turn (never interrupts a running
+        // turn, never asks the human via a blocking dialog).
+        const agent = ctx.agents?.get?.(sessionId)
+        if (!agent) {
+          return sendJson(res, 404, { error: `no live agent for session ${sessionId}` })
+        }
+        const text =
+          `[memsearch] Skill candidate "${name}" is ready for review.\n\n` +
+          `Read the candidate at .memsearch/skill-candidates/${name}/ (SKILL.md plus meta.json), ` +
+          `verify it against the cited memory journals, decide whether it is worth installing, ` +
+          `and report your recommendation to the user. Installation stays a manual step: ` +
+          `memsearch skills install ${name} --path <dir>.`
+        const message = await createMemoryMessage(ctx, text)
+        agent.inbox.append('next-turn', message)
+        return sendJson(res, 200, { ok: true, action, name, injected: true })
+      }
+      // install: background `memsearch skills install` to the resolved target.
+      // Detached + unref so the install survives the DSH process; the
+      // skill-filesystem watcher picks up the new SKILL.md automatically.
+      const projectDir = projectDirForSession(sessionId)
+      const target = resolveSkillInstallTarget(memsearchCmd, projectDir)
+      const command =
+        `${memsearchCmd} skills install '${shellEscape(name)}' ` +
+        `--path '${shellEscape(target)}'`
+      const child = execFile('bash', ['-c', command], {
+        cwd: projectDir,
+        timeout: 60000,
+        maxBuffer: 4 * 1024 * 1024,
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, MEMSEARCH_NO_WATCH: '1' },
+      }, (error) => {
+        if (error) ctx.logger.warn(`[memsearch] skill install failed: ${error.message}`)
+      })
+      child.unref()
+      return sendJson(res, 200, { ok: true, action, name, started: true, target })
+    },
+  })
+}
+
 /** Compact human-readable memory block injected into the request. */
 function renderMemoryBlock(chunks) {
   const lines = chunks.map((chunk, index) => {
@@ -960,94 +1052,26 @@ export function apply(ctx, config = {}) {
   })
 
   // --- Skill review panel: browser-facing JSON API (web only) ---
-  // Served on the DSH web server so the client panel can list candidates and
-  // trigger review / install. The webServer service is optional: headless
-  // profiles have no browser UI and simply skip these routes. Guarded with a
-  // feature check so plain-object test contexts (and non-Cordis hosts) no-op.
-  const webServer = typeof ctx.get === 'function' ? ctx.get('webServer') : undefined
-  if (webServer) {
-    const readJsonBody = (req) => new Promise((resolve) => {
-      let body = ''
-      req.on('data', (chunk) => { body += chunk })
-      req.on('end', () => {
-        try { resolve(JSON.parse(body || '{}')) } catch { resolve({}) }
-      })
-    })
-    const sendJson = (res, status, payload) => {
-      res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
-      res.end(JSON.stringify(payload))
+  // The memsearch plugin mounts in the base bundle layer, before the DSH web
+  // server service exists. Retry until the service appears (web profile) or
+  // give up silently (headless / tui profiles never provide it). The retry
+  // timer is unref'd so it never keeps the process alive, and the routes are
+  // registered exactly once.
+  let skillReviewAttempted = false
+  const tryRegisterSkillReview = () => {
+    if (skillReviewAttempted) return
+    const webServer = typeof ctx.get === 'function' ? ctx.get('webServer') : undefined
+    if (webServer === undefined) return // not available yet; retry later
+    skillReviewAttempted = true
+    try {
+      registerSkillReviewRoutes(ctx, webServer, memsearchCmd)
+    } catch (error) {
+      ctx.logger.warn(`[memsearch] skill-review route registration failed: ${error.message}`)
     }
-    // Project dir for a session id (its durable cwd), else the process cwd.
-    // A long-lived web surface serves many projects, so we never assume the
-    // boot dir is the only one (mirrors the capture path).
-    const projectDirForSession = (sessionId) => {
-      const agent = ctx.agents?.get?.(sessionId)
-      return projectDirFor(agent?.session)
-    }
-
-    webServer.register({
-      kind: 'exact',
-      path: '/memsearch-dsh/skill-candidates',
-      handler: (req, res) => {
-        if (req.method !== 'GET') return sendJson(res, 405, { error: 'method not allowed' })
-        const sessionId = new URL(req.url, 'http://localhost').searchParams.get('sessionId')
-        const projectDir = projectDirForSession(sessionId)
-        const memoryDir = memsearchDirFor(projectDir)
-        sendJson(res, 200, { candidates: listSkillCandidates(memoryDir) })
-      },
-    })
-
-    webServer.register({
-      kind: 'exact',
-      path: '/memsearch-dsh/skill-review',
-      handler: async (req, res) => {
-        if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' })
-        const body = await readJsonBody(req)
-        const { sessionId, name, action } = body
-        if (!name || (action !== 'review' && action !== 'install')) {
-          return sendJson(res, 400, { error: 'name and action (review|install) are required' })
-        }
-        if (action === 'review') {
-          // Non-blocking: queue a user message into the live agent's inbox.
-          // The agent picks it up on the next turn (never interrupts a running
-          // turn, never asks the human via a blocking dialog).
-          const agent = ctx.agents?.get?.(sessionId)
-          if (!agent) {
-            return sendJson(res, 404, { error: `no live agent for session ${sessionId}` })
-          }
-          const text =
-            `[memsearch] Skill candidate "${name}" is ready for review.\n\n` +
-            `Read the candidate at .memsearch/skill-candidates/${name}/ (SKILL.md plus meta.json), ` +
-            `verify it against the cited memory journals, decide whether it is worth installing, ` +
-            `and report your recommendation to the user. Installation stays a manual step: ` +
-            `memsearch skills install ${name} --path <dir>.`
-          const message = await createMemoryMessage(ctx, text)
-          agent.inbox.append('next-turn', message)
-          return sendJson(res, 200, { ok: true, action, name, injected: true })
-        }
-        // install: background `memsearch skills install` to the resolved target.
-        // Detached + unref so the install survives the DSH process; the
-        // skill-filesystem watcher picks up the new SKILL.md automatically.
-        const projectDir = projectDirForSession(sessionId)
-        const target = resolveSkillInstallTarget(memsearchCmd, projectDir)
-        const command =
-          `${memsearchCmd} skills install '${shellEscape(name)}' ` +
-          `--path '${shellEscape(target)}'`
-        const child = execFile('bash', ['-c', command], {
-          cwd: projectDir,
-          timeout: 60000,
-          maxBuffer: 4 * 1024 * 1024,
-          detached: true,
-          stdio: 'ignore',
-          env: { ...process.env, MEMSEARCH_NO_WATCH: '1' },
-        }, (error) => {
-          if (error) ctx.logger.warn(`[memsearch] skill install failed: ${error.message}`)
-        })
-        child.unref()
-        return sendJson(res, 200, { ok: true, action, name, started: true, target })
-      },
-    })
   }
+  tryRegisterSkillReview()
+  const skillReviewTimer = setInterval(tryRegisterSkillReview, 1000)
+  skillReviewTimer.unref?.()
 
   // Warm the index for this project once at startup (fire-and-forget).
   const bootMemoryDir = memoryDirFor(bootProjectDir)
@@ -1092,6 +1116,9 @@ export { memsearchDirFor }
 
 /** Read skill candidates from the `.memsearch/skill-candidates` directory. */
 export { listSkillCandidates }
+
+/** Register the skill-review JSON routes on a web server service. */
+export { registerSkillReviewRoutes }
 
 /** Resolve the distilled-skill install target (paths config, else ~/.agents/skills). */
 export { resolveSkillInstallTarget }
