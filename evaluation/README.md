@@ -2,6 +2,10 @@
 
 This document describes the evaluation methodology and results used to select the default embedding provider for the memsearch Claude Code plugin.
 
+## Reranking evaluation
+
+The full bilingual comparison of frozen retrieval order, Jev, and Voyage rerank-3 is documented in [Reranking Evaluation](../docs/home/reranking-evaluation.md). The executable runner is [`rerank_evaluate.py`](rerank_evaluate.py); aggregate results are stored in [`reranking-results.json`](reranking-results.json). The private memory corpus and per-query outputs are not published.
+
 ## Goal
 
 Benchmark a wide range of embedding models — from cloud APIs to local open-source options — to find a lightweight, practical default for the memsearch Claude Code plugin. The ideal model should perform well on both Chinese and English memory retrieval, run locally without an API key or GPU, and have a small dependency footprint.
