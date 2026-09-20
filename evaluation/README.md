@@ -137,3 +137,11 @@ The ONNX model (~558MB) will be downloaded automatically on first use and cached
 ```bash
 uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/null || true
 ```
+
+### Metric continuity for reranking
+
+The [reranking evaluation](../docs/home/reranking-evaluation.md#metrics) reports
+**Hit@K**, matching this historical table's any-positive metric labeled Recall@K,
+alongside **Recall@K**, the fraction of labeled positives retrieved. Use Hit@K
+for the same metric definition; English candidate selection still differs,
+so the reranking rows should not be appended to this embedding leaderboard.

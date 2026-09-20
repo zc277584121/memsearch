@@ -20,6 +20,9 @@ def test_multihop_recall_is_fraction_of_gold_not_hit_rate():
     result = evaluation.metrics(["irrelevant", "a", "other"], ["a", "b"])
     assert result["recall_at_1"] == 0
     assert result["recall_at_5"] == 0.5
+    assert result["hit_at_1"] == 0
+    assert result["hit_at_5"] == 1
+    assert result["hit_at_10"] == 1
     assert result["mrr_at_10"] == 0.5
     assert result["ndcg_at_10"] == pytest.approx((1 / math.log2(3)) / (1 + 1 / math.log2(3)))
 
@@ -56,13 +59,15 @@ def test_full_runner_resumes_cached_bilingual_responses_without_credentials(tmp_
     output = tmp_path / "output"
     ids = [str(i) for i in range(10)]
     candidate_file = data / "candidates.json"
-    candidate_file.write_text(json.dumps([{"query_id": "q1", "retrieved_ids": ids}]))
+    candidate_file.write_text(json.dumps([{"query_id": qid, "retrieved_ids": ids} for qid in ("q1", "q2")]))
     for lang in ("zh", "en"):
         docs = [f"{lang} document {i}" for i in ids]
         corpus = [{"chunk_id": cid, "content": doc} for cid, doc in zip(ids, docs, strict=True)]
         query = {"query_id": "q1", "query": f"{lang} query", "query_type": "simple", "positive_chunk_ids": ["0"]}
         (data / f"corpus_{lang}.jsonl").write_text("\n".join(json.dumps(r) for r in corpus))
-        (data / f"queries_{lang}.jsonl").write_text(json.dumps(query))
+        (data / f"queries_{lang}.jsonl").write_text(
+            "\n".join(json.dumps({**query, "query_id": qid}) for qid in ("q1", "q2"))
+        )
         for provider in ("jev", "voyage"):
             if provider == "jev":
                 payload = evaluation.JevReranker().build_request(query["query"], docs)
@@ -110,6 +115,7 @@ def test_full_runner_resumes_cached_bilingual_responses_without_credentials(tmp_
     all_jev = next(
         r for r in report["metrics"] if r["language"] == "all" and r["query_type"] == "all" and r["method"] == "jev"
     )
-    assert all_jev["n"] == 2
+    assert all_jev["n"] == 4
     assert all_jev["mrr_at_10"] == 1.0
+    assert all_jev["hit_at_5"] == 1.0
     assert len(list((output / "cache").glob("*.json"))) == 4

@@ -12,6 +12,7 @@ import json
 import math
 import os
 import statistics
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -29,6 +30,9 @@ def metrics(ids: list[str], positives: list[str]) -> dict[str, float]:
     hits = [int(cid in gold) for cid in ids[:10]]
     ideal = sum(1 / math.log2(i + 2) for i in range(min(10, len(gold))))
     return {
+        "hit_at_1": float(any(hits[:1])),
+        "hit_at_5": float(any(hits[:5])),
+        "hit_at_10": float(any(hits)),
         "recall_at_1": sum(hits[:1]) / len(gold),
         "recall_at_5": sum(hits[:5]) / len(gold),
         "recall_at_10": sum(hits) / len(gold),
@@ -179,8 +183,9 @@ def main() -> None:
             validate_voyage(raw, 10)
         target = cache / filename
         if not target.exists():
-            temporary = target.with_suffix(".tmp")
-            temporary.write_text(json.dumps(result, indent=2))
+            with tempfile.NamedTemporaryFile(mode="w", dir=cache, suffix=".tmp", delete=False) as file:
+                file.write(json.dumps(result, indent=2))
+                temporary = Path(file.name)
             temporary.replace(target)
         return (provider, lang, qid), result
 

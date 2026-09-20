@@ -76,15 +76,27 @@ same prompt; no query-specific prompt optimization is performed.
 
 ## Metrics
 
-Metrics are macro-averaged over query rows. Recall@K is the fraction of recorded
-positive chunks found in the first K positions, **not** an any-hit indicator.
-The historical embedding script labeled an any-positive hit indicator as Recall@K;
-its multi-hop values therefore use a different definition and are not directly
-comparable with the fractional recall reported here. MRR@10 is reciprocal rank of the first positive within the ten candidates, or
-zero when none is present. NDCG@10 uses binary relevance and an ideal ranking
-based on all recorded positives, including those absent from the shortlist.
-The overall table weights each query equally; it does not give each query
-category equal weight. Chinese and English have equal numbers of rows.
+Metrics are macro-averaged over query rows. To preserve continuity with the
+historical embedding evaluation, this report publishes both definitions:
+
+| Metric | Definition | Historical compatibility |
+| --- | --- | --- |
+| Hit@K | 1 if any recorded positive is in the first K results, otherwise 0 | Exactly the historical script's metric labeled Recall@K |
+| Recall@K | Number of positives in the first K results divided by all recorded positives | Matches Hit@K for single-positive queries; differs for multi-positive queries |
+| MRR@10 | Reciprocal rank of the first positive within ten candidates, or zero | Same formula as historical MRR with top-10 retrieval |
+| NDCG@10 | Binary relevance, ideal ranking based on all recorded positives | Same formula as the historical script |
+
+For example, retrieving one of three positives in the first five positions gives
+Hit@5 = 1 and Recall@5 = 1/3. Neither metric silently replaces the other. The
+historical embedding table retains its original values and labels; use the
+Hit@K columns in the new JSON/CSV when matching its metric definition.
+
+Matching the metric definition does not remove differences in retrieval setup:
+the English reranking rows reuse Chinese candidate IDs, while the old English
+embedding benchmark performed English retrieval. Earlier subsets also informed
+prompt inspection. These tables should not be combined into a single embedding
+leaderboard. The overall table weights each query equally, not each category;
+Chinese and English have equal numbers of rows.
 
 ## Full results (2026-09-20)
 
@@ -101,6 +113,23 @@ All 4,344 language-query rows completed successfully. Each provider has 2,172 re
 | English | Frozen order | 2172 | 0.7471 | 0.6372 | 0.6728 | 0.8350 |
 | English | Jev 1.13.0 | 2172 | 0.7952 | 0.6883 | 0.7110 | 0.8350 |
 | English | Voyage rerank-3 | 2172 | 0.8164 | 0.7743 | 0.7743 | 0.8350 |
+
+### Historical metric continuity
+
+The following uses the old any-positive hit definition. All Hit@1/5/10 and
+Recall@1/5/10 breakdowns are available in the aggregate JSON and CSV.
+
+| Language | Method | Hit@5 (historical Recall@5) | Recall@5 |
+| --- | --- | ---: | ---: |
+| Overall | Frozen order | 0.7827 | 0.7471 |
+| Overall | Jev 1.13.0 | 0.8303 | 0.7941 |
+| Overall | Voyage rerank-3 | 0.8531 | 0.8187 |
+| Chinese | Frozen order | 0.7827 | 0.7471 |
+| Chinese | Jev 1.13.0 | 0.8297 | 0.7930 |
+| Chinese | Voyage rerank-3 | 0.8550 | 0.8211 |
+| English | Frozen order | 0.7827 | 0.7471 |
+| English | Jev 1.13.0 | 0.8310 | 0.7952 |
+| English | Voyage rerank-3 | 0.8513 | 0.8164 |
 
 ### Interpretation
 

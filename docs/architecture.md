@@ -53,6 +53,13 @@ graph LR
     end
 ```
 
+When an optional reranker is configured, search fetches up to `3 * top_k`
+candidates from this RRF stage, then applies a local cross-encoder or remote
+[Jev reranker](home/configuration.md#optional-remote-reranking) and returns the
+best `top_k` results. Jev receives the query and candidate contents in one
+batched API request; the RRF fusion stage still runs first. This second stage
+is disabled by default.
+
 ### Ingest Flow
 
 Markdown files are scanned, chunked by headings, and deduplicated using SHA-256 content hashes. Only new or changed chunks are sent to the embedding API and upserted into Milvus. Chunks from deleted files under indexed directory paths are automatically cleaned up.
