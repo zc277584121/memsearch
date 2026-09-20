@@ -784,7 +784,7 @@ Total indexed chunks: 87
 
 ### Notes
 
-- **Stats may lag on remote Milvus Server.** The `get_collection_stats()` API on a remote Milvus Server may return stale counts immediately after an upsert. Stats are updated after segment flush and compaction. Search results are always up to date.
+- **Stats may lag on remote Milvus Server.** The `get_collection_stats()` API on a remote Milvus Server may return stale counts immediately after an upsert. Stats are updated after segment flush and compaction. A zero metadata count does not prevent search from checking growing-only collections. Once metadata reports sealed rows, search keeps Milvus's existing hybrid-search consistency, so newly growing rows in a mixed collection may still have a brief visibility delay.
 
 ---
 

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -47,6 +48,157 @@ def test_upsert_and_search(store: MilvusStore):
     results = store.search([1.0, 0.0, 0.0, 0.0], top_k=1)
     assert len(results) >= 1
     assert results[0]["content"] == "Hello world"
+
+
+def test_search_uses_metadata_fast_path_without_aggregate(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    stats = Mock(return_value={"row_count": 1})
+    aggregate = Mock(side_effect=AssertionError("aggregate query must not run"))
+    hybrid_search = Mock(return_value=[[]])
+    monkeypatch.setattr(store._client, "get_collection_stats", stats)
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="sealed") == []
+    stats.assert_called_once_with(store._collection)
+    aggregate.assert_not_called()
+    hybrid_search.assert_called_once()
+
+
+def test_search_empty_collection_uses_strong_count(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    aggregate = Mock(return_value=[{"count(*)": 0}])
+    hybrid_search = Mock(side_effect=AssertionError("empty collection must not be searched"))
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="empty") == []
+    aggregate.assert_called_once_with(
+        collection_name=store._collection,
+        filter="",
+        output_fields=["count(*)"],
+        consistency_level="Strong",
+    )
+    hybrid_search.assert_not_called()
+
+
+def test_search_growing_rows_continue_after_strong_count(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    aggregate = Mock(return_value=[{"count(*)": 1}])
+    hybrid_search = Mock(return_value=[[]])
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="growing") == []
+    aggregate.assert_called_once_with(
+        collection_name=store._collection,
+        filter="",
+        output_fields=["count(*)"],
+        consistency_level="Strong",
+    )
+    hybrid_search.assert_called_once()
+
+
+def test_search_propagates_strong_count_failure(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    failure = RuntimeError("strong count failed")
+    aggregate = Mock(side_effect=failure)
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="strong count failed") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="failure")
+
+    assert exc_info.value is failure
+    hybrid_search.assert_not_called()
+
+
+def test_search_propagates_metadata_failure(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    failure = RuntimeError("metadata failed")
+    stats = Mock(side_effect=failure)
+    aggregate = Mock()
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", stats)
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="metadata failed") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="failure")
+
+    assert exc_info.value is failure
+    aggregate.assert_not_called()
+    hybrid_search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        [],
+        [
+            {},
+        ],
+        [{"count(*)": "invalid"}],
+        [{"count(*)": False}],
+        [{"count(*)": 0.5}],
+        [{"count(*)": -0.5}],
+        [{"count(*)": -1}],
+        [{"count(*)": 0}, {"count(*)": 9}],
+    ],
+)
+def test_search_rejects_invalid_strong_count_response(
+    store: MilvusStore,
+    monkeypatch: pytest.MonkeyPatch,
+    response: list[dict[str, object]],
+):
+    aggregate = Mock(return_value=response)
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value={"row_count": 0}))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="Milvus returned") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="invalid")
+
+    assert store._collection in str(exc_info.value)
+    aggregate.assert_called_once()
+    hybrid_search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stats", [{}, {"row_count": False}, {"row_count": 0.5}, {"row_count": -0.5}, {"row_count": -1}]
+)
+def test_search_rejects_invalid_metadata_count(
+    store: MilvusStore,
+    monkeypatch: pytest.MonkeyPatch,
+    stats: dict[str, object],
+):
+    aggregate = Mock()
+    hybrid_search = Mock()
+    monkeypatch.setattr(store._client, "get_collection_stats", Mock(return_value=stats))
+    monkeypatch.setattr(store._client, "query", aggregate)
+    monkeypatch.setattr(store._client, "hybrid_search", hybrid_search)
+
+    with pytest.raises(RuntimeError, match="invalid metadata count") as exc_info:
+        store.search([1.0, 0.0, 0.0, 0.0], query_text="invalid")
+
+    assert store._collection in str(exc_info.value)
+    aggregate.assert_not_called()
+    hybrid_search.assert_not_called()
+
+
+def test_search_empty_lite_collection_returns_empty(store: MilvusStore):
+    assert store.search([1.0, 0.0, 0.0, 0.0], query_text="empty") == []
+
+
+def test_count_keeps_metadata_semantics(store: MilvusStore, monkeypatch: pytest.MonkeyPatch):
+    stats = Mock(return_value={"row_count": 7})
+    aggregate = Mock(side_effect=AssertionError("count must keep metadata semantics"))
+    monkeypatch.setattr(store._client, "get_collection_stats", stats)
+    monkeypatch.setattr(store._client, "query", aggregate)
+
+    assert store.count() == 7
+    stats.assert_called_once_with(store._collection)
+    aggregate.assert_not_called()
 
 
 def test_delete_by_source(store: MilvusStore):

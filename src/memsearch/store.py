@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
+import operator
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -21,6 +22,19 @@ def _milvus_lite_major() -> int | None:
         return int(importlib.metadata.version("milvus-lite").split(".")[0])
     except (importlib.metadata.PackageNotFoundError, ValueError):
         return None
+
+
+def _non_negative_integer(value: Any) -> int:
+    """Return an integer-protocol value without accepting bools or truncation."""
+    if isinstance(value, bool):
+        raise ValueError("boolean values are not row counts")
+    try:
+        result = operator.index(value)
+    except TypeError as exc:
+        raise ValueError("row counts must be integers") from exc
+    if result < 0:
+        raise ValueError("row counts must be non-negative")
+    return result
 
 
 def _local_open_error_message(exc: Exception, resolved: str, major: int | None) -> str:
@@ -189,9 +203,10 @@ class MilvusStore:
         """Hybrid search: dense vector + BM25 full-text with RRF reranking."""
         from pymilvus import AnnSearchRequest, RRFRanker
 
-        # BM25 crashes on empty collections (avgdl=0 → NaN). See #306.
-        stats = self._client.get_collection_stats(self._collection)
-        if int(stats.get("row_count", 0)) == 0:
+        # BM25 crashes on empty collections (avgdl=0 → NaN). See #306. Remote
+        # Milvus metadata omits growing rows, so confirm zero metadata counts
+        # with a strong query before treating the collection as empty.
+        if self._collection_is_empty():
             return []
 
         req_kwargs: dict[str, Any] = {}
@@ -230,6 +245,38 @@ class MilvusStore:
         # Theoretical max = num_retrievers / (k + 1), when a result ranks #1 in every retriever.
         max_rrf = len(reqs) / (rrf_k + 1)
         return [{**hit["entity"], "score": hit["distance"] / max_rrf} for hit in results[0]]
+
+    def _collection_is_empty(self) -> bool:
+        """Return whether no sealed or growing rows exist in the collection."""
+        stats = self._client.get_collection_stats(self._collection)
+        try:
+            metadata_count = _non_negative_integer(stats["row_count"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Milvus returned an invalid metadata count for collection '{self._collection}': {stats!r}"
+            ) from exc
+        if metadata_count > 0:
+            return False
+
+        results = self._client.query(
+            collection_name=self._collection,
+            filter="",
+            output_fields=["count(*)"],
+            consistency_level="Strong",
+        )
+        if not isinstance(results, list) or len(results) != 1:
+            raise RuntimeError(
+                f"Milvus returned an invalid count response for collection '{self._collection}': {results!r}; "
+                "expected exactly one aggregate row"
+            )
+
+        try:
+            row_count = _non_negative_integer(results[0]["count(*)"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Milvus returned an invalid count response for collection '{self._collection}': {results!r}"
+            ) from exc
+        return row_count == 0
 
     _QUERY_FIELDS: ClassVar[list[str]] = [
         "content",
@@ -287,7 +334,7 @@ class MilvusStore:
         )
 
     def count(self) -> int:
-        """Return total number of stored chunks."""
+        """Return the metadata row count, which may lag on Milvus Server."""
         stats = self._client.get_collection_stats(self._collection)
         return stats.get("row_count", 0)
 
