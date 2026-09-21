@@ -131,6 +131,31 @@ Recall@1/5/10 breakdowns are available in the aggregate JSON and CSV.
 | English | Jev 1.13.0 | 0.8310 | 0.7952 |
 | English | Voyage rerank-3 | 0.8513 | 0.8164 |
 
+### Visual comparison
+
+![MemSearch reranking quality and estimated API cost](../assets/evaluation/memsearch-reranking-comparison.png)
+
+The four panels summarize aggregate Recall@5, MRR@10, NDCG@10 and estimated
+reranking API cost per 1,000 queries. Jev improves Recall@5 by 4.70 percentage
+points over the frozen order, while Voyage adds another 2.46 points and has a
+larger advantage in MRR@10 (0.7754 versus 0.6884). In this evaluation, Voyage is
+better at moving a labelled positive to the first few positions, not just into
+the top five. The recorded usage implies about $0.171 per 1,000 queries for Jev
+and $0.120 for Voyage at the evaluation-time prices, before account credits.
+These figures cover reranking only, not the complete search pipeline.
+
+The comparison supports Jev as an optional provider, rather than a new default.
+It does not establish that Jev is generally weaker at reranking: this run tests
+one Noul prompt on generated memory queries and a fixed candidate pool, with
+potentially incomplete positive labels. Different relevance criteria or graded
+scoring could change the result, but were not validated by this full-set run.
+
+Regenerate the figure from the published aggregates, without API calls:
+
+```bash
+uv run evaluation/plot_reranking_comparison.py
+```
+
 ### Interpretation
 
 Both rerankers improve aggregate Recall@5, MRR@10, and NDCG@10 over the frozen
