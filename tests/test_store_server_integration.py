@@ -49,7 +49,12 @@ def server_stores() -> Iterator[Callable[[str], MilvusStore]]:
     stores: list[MilvusStore] = []
 
     def create(suffix: str) -> MilvusStore:
-        store = MilvusStore(uri=SERVER_URI, collection=f"{COLLECTION_PREFIX}_{suffix}", dimension=4)
+        store = MilvusStore(
+            uri=SERVER_URI,
+            collection=f"{COLLECTION_PREFIX}_{suffix}",
+            dimension=4,
+            _create_if_missing=True,
+        )
         stores.append(store)
         return store
 

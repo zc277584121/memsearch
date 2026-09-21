@@ -67,6 +67,49 @@ test("plugin rejects a core without integration-default support before data acti
   }
 });
 
+test("memory search reports a nonzero memsearch exit explicitly", async () => {
+  const root = mkdtempSync(join(tmpdir(), "memsearch-opencode-search-error-"));
+  const bin = join(root, "bin");
+  const project = join(root, "project");
+  const previousPath = process.env.PATH;
+  const previousHome = process.env.HOME;
+  const previousNoWatch = process.env.MEMSEARCH_NO_WATCH;
+  try {
+    mkdirSync(bin);
+    mkdirSync(project);
+    const fakeMemsearch = join(bin, "memsearch");
+    writeFileSync(
+      fakeMemsearch,
+      "#!/usr/bin/env bash\n" +
+        "if [ \"$1\" = \"config\" ]; then exit 0; fi\n" +
+        "if [ \"$1\" = \"search\" ]; then echo 'Collection missing' >&2; exit 1; fi\n" +
+        "exit 0\n",
+      "utf-8"
+    );
+    chmodSync(fakeMemsearch, 0o755);
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    process.env.HOME = root;
+    process.env.MEMSEARCH_NO_WATCH = "1";
+
+    const mod = await import("./index.ts");
+    const registered = await mod.default({ project: {}, directory: project, worktree: project } as any);
+    const output = await registered.tool.memory_search.execute(
+      { query: "release" },
+      { directory: project }
+    );
+
+    assert.match(output, /Search failed \(exit 1\): Collection missing/);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousNoWatch === undefined) delete process.env.MEMSEARCH_NO_WATCH;
+    else process.env.MEMSEARCH_NO_WATCH = previousNoWatch;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("appends memory context when no system entry exists yet", () => {
   const result = mergeSystemMemoryContext(undefined, `${MEMSEARCH_SYSTEM_MARKER} ctx-a`);
   assert.deepEqual(result, [`${MEMSEARCH_SYSTEM_MARKER} ctx-a`]);

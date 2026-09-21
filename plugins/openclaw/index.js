@@ -190,6 +190,11 @@ var index_default = {
     async function runCmd(argv, opts) {
       return api.runtime.system.runCommandWithTimeout(argv, opts || {});
     }
+    function commandFailure(action, result) {
+      if (result.code === 0) return null;
+      const detail = (result.stderr || result.stdout || "unknown error").trim();
+      return `${action} failed (exit ${result.code ?? "unknown"}): ${detail}`;
+    }
     let _memsearchCmd = null;
     async function getMemsearchCmd() {
       if (_memsearchCmd) return _memsearchCmd;
@@ -353,6 +358,10 @@ var index_default = {
                 ],
                 { timeoutMs: 3e4, cwd: projectDir }
               );
+              const failure = commandFailure("Search", result);
+              if (failure) {
+                return { content: [{ type: "text", text: failure }] };
+              }
               const output = result.stdout || result.stderr || "No results";
               return { content: [{ type: "text", text: output }] };
             } catch (e) {
@@ -396,6 +405,10 @@ var index_default = {
                 ],
                 { timeoutMs: 15e3, cwd: projectDir }
               );
+              const failure = commandFailure("Expand", result);
+              if (failure) {
+                return { content: [{ type: "text", text: failure }] };
+              }
               const output = result.stdout || result.stderr || "No content";
               return { content: [{ type: "text", text: output }] };
             } catch (e) {
@@ -669,10 +682,15 @@ ${anchor}${cleanSummary}
             ],
             { timeoutMs: 3e4, cwd: projectDir }
           );
+          const failure = commandFailure("Search", result);
+          if (failure) throw new Error(failure);
           if (result.stdout) process.stdout.write(result.stdout);
           if (result.stderr) process.stderr.write(result.stderr);
         } catch (e) {
-          console.error(`Search failed: ${e.message}`);
+          const message = String(e.message).startsWith("Search failed") ? String(e.message) : `Search failed: ${e.message}`;
+          console.error(message);
+          if (message === e.message) throw e;
+          throw new Error(message);
         }
       });
       cmd.command("index [directory]").description("Index memory files").action(async (directory) => {
@@ -722,9 +740,11 @@ ${anchor}${cleanSummary}
             ["bash", "-c", `${memsearch} stats --default-collection ${collection}`],
             { timeoutMs: 1e4, cwd: projectDir }
           );
-          if (result.stdout) process.stdout.write(result.stdout);
-        } catch {
-          console.log("Stats: (unavailable \u2014 collection may not exist yet)");
+          const failure = commandFailure("Stats", result);
+          if (failure) console.log(failure);
+          else if (result.stdout) process.stdout.write(result.stdout);
+        } catch (e) {
+          console.log(`Stats failed: ${e.message}`);
         }
       });
     }, {

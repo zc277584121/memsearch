@@ -193,6 +193,84 @@ test("memory search passes the derived collection as a project-scoped default", 
   }
 });
 
+test("tool, CLI search, and status expose nonzero memsearch exits", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), "memsearch-openclaw-errors-"));
+  const previousHome = process.env.HOME;
+  const previousNoWatch = process.env.MEMSEARCH_NO_WATCH;
+  const tools = new Map<string, (ctx: unknown) => any>();
+  const actions = new Map<string, (...args: any[]) => Promise<void>>();
+  const output: string[] = [];
+  const originalLog = console.log;
+  process.env.HOME = projectDir;
+  process.env.MEMSEARCH_NO_WATCH = "1";
+
+  function command(name: string): any {
+    return {
+      command,
+      description() { return this; },
+      option() { return this; },
+      action(fn: (...args: any[]) => Promise<void>) {
+        actions.set(name, fn);
+        return this;
+      },
+    };
+  }
+
+  try {
+    console.log = (...args: unknown[]) => output.push(args.join(" "));
+    plugin.register({
+      logger: {},
+      pluginConfig: {},
+      runtime: {
+        system: {
+          async runCommandWithTimeout(argv: string[]) {
+            const rendered = argv.join(" ");
+            if (argv[0] === "which") return { stdout: "/tmp/memsearch\n", stderr: "", code: 0 };
+            if (argv[0] === "bash" && argv[1]?.endsWith("derive-collection.sh")) {
+              return { stdout: "ms_error_test\n", stderr: "", code: 0 };
+            }
+            if (rendered.includes("config get")) return { stdout: "", stderr: "", code: 0 };
+            if (rendered.includes(" search ")) {
+              return { stdout: "", stderr: "Collection missing\n", code: 1 };
+            }
+            if (rendered.includes(" stats ")) {
+              return { stdout: "", stderr: "Permission denied\n", code: 1 };
+            }
+            return { stdout: "", stderr: "", code: 0 };
+          },
+        },
+      },
+      registerTool(factory: (ctx: unknown) => any, metadata: { name: string }) {
+        tools.set(metadata.name, factory);
+      },
+      registerCli(callback: (ctx: any) => void) {
+        callback({ program: { command } });
+      },
+      on() {},
+    });
+
+    const memorySearch = tools.get("memory_search")?.({ agentId: "test", workspaceDir: projectDir });
+    const toolResult = await memorySearch.execute("call-1", { query: "release" });
+    assert.match(toolResult.content[0].text, /Search failed \(exit 1\): Collection missing/);
+
+    const cliSearch = actions.get("search <query>");
+    assert.ok(cliSearch);
+    await assert.rejects(() => cliSearch("release", {}), /Search failed \(exit 1\): Collection missing/);
+
+    const status = actions.get("status");
+    assert.ok(status);
+    await status();
+    assert.ok(output.includes("Stats failed (exit 1): Permission denied"));
+  } finally {
+    console.log = originalLog;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousNoWatch === undefined) delete process.env.MEMSEARCH_NO_WATCH;
+    else process.env.MEMSEARCH_NO_WATCH = previousNoWatch;
+    rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
 test("status reports the resolved collection instead of the derived fallback", async () => {
   const projectDir = mkdtempSync(join(tmpdir(), "memsearch-openclaw-status-"));
   const previousHome = process.env.HOME;

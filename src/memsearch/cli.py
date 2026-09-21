@@ -30,6 +30,7 @@ from .index_state import (
     resolve_index_state_path,
 )
 from .io import read_utf8_text_replace
+from .store import CollectionNotFoundError
 
 try:
     from pymilvus.exceptions import MilvusException
@@ -405,6 +406,9 @@ def search(
                     click.echo(f"  ... [truncated, run 'memsearch expand {chunk_hash}' for full content]")
                 else:
                     click.echo(content)
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
@@ -546,6 +550,9 @@ def expand(
                 click.echo(f"Session: {anchor['session']}  Turn: {anchor['turn']}")
                 click.echo(f"Transcript: {anchor['transcript']}")
             click.echo(f"\n{expanded}")
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
@@ -812,6 +819,9 @@ def compact(
             click.echo(f"No chunks matched source: {normalized_source}")
         else:
             click.echo("No chunks to compact.")
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None
@@ -905,6 +915,9 @@ def stats(
         )
         count = store.count()
         click.echo(f"Total indexed chunks: {count}")
+    except CollectionNotFoundError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from None
     except MilvusException as e:
         click.echo(f"Milvus error (code {e.code}): {e.message}", err=True)
         raise SystemExit(1) from None

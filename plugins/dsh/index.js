@@ -340,8 +340,7 @@ function milvusUriFlag(milvusUri) {
 
 /**
  * Run one bounded memsearch search over the project collection.
- * @returns the parsed result array, or null on any failure (caller treats
- *          null as "no injectable context" and stays a no-op).
+ * @returns parsed chunks plus an explicit error when the CLI call fails.
  */
 function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
   return new Promise((resolve) => {
@@ -354,13 +353,18 @@ function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
       'bash',
       ['-c', command],
       { cwd: projectDir, timeout: SEARCH_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout) => {
-        if (error) return resolve(null)
+      (error, stdout, stderr) => {
+        if (error) {
+          const detail = String(stderr || error.message || 'unknown error').trim()
+          return resolve({ chunks: null, error: detail })
+        }
         try {
           const chunks = JSON.parse(stdout)
-          resolve(Array.isArray(chunks) ? chunks : null)
+          resolve(Array.isArray(chunks)
+            ? { chunks, error: '' }
+            : { chunks: null, error: 'invalid non-array JSON output' })
         } catch {
-          resolve(null)
+          resolve({ chunks: null, error: 'invalid JSON output' })
         }
       },
     )
@@ -1306,7 +1310,14 @@ export function apply(ctx, config = {}) {
 
       const collection = resolveCollection(projectDir)
       if (!collection) return decision
-      const chunks = await runSearch(memsearchCmd, question, collection, projectDir, opts.milvusUri)
+      const { chunks, error } = await runSearch(
+        memsearchCmd,
+        question,
+        collection,
+        projectDir,
+        opts.milvusUri,
+      )
+      if (error) ctx.logger.warn(`[memsearch] search failed: ${error}`)
       if (!chunks || chunks.length === 0) return decision
 
       const text = renderMemoryBlock(chunks)

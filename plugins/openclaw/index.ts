@@ -294,6 +294,15 @@ export default {
       return api.runtime.system.runCommandWithTimeout(argv, opts || {});
     }
 
+    function commandFailure(
+      action: string,
+      result: { stdout: string; stderr: string; code: number | null }
+    ): string | null {
+      if (result.code === 0) return null;
+      const detail = (result.stderr || result.stdout || "unknown error").trim();
+      return `${action} failed (exit ${result.code ?? "unknown"}): ${detail}`;
+    }
+
     // --- Lazy-cached memsearch CLI detection ---
     let _memsearchCmd: string | null = null;
 
@@ -502,6 +511,10 @@ export default {
                 ],
                 { timeoutMs: 30000, cwd: projectDir }
               );
+              const failure = commandFailure("Search", result);
+              if (failure) {
+                return { content: [{ type: "text" as const, text: failure }] };
+              }
               const output = result.stdout || result.stderr || "No results";
               return { content: [{ type: "text" as const, text: output }] };
             } catch (e: any) {
@@ -555,6 +568,10 @@ export default {
                 ],
                 { timeoutMs: 15000, cwd: projectDir }
               );
+              const failure = commandFailure("Expand", result);
+              if (failure) {
+                return { content: [{ type: "text" as const, text: failure }] };
+              }
               const output = result.stdout || result.stderr || "No content";
               return { content: [{ type: "text" as const, text: output }] };
             } catch (e: any) {
@@ -898,10 +915,17 @@ export default {
               ],
               { timeoutMs: 30000, cwd: projectDir }
             );
+            const failure = commandFailure("Search", result);
+            if (failure) throw new Error(failure);
             if (result.stdout) process.stdout.write(result.stdout);
             if (result.stderr) process.stderr.write(result.stderr);
           } catch (e: any) {
-            console.error(`Search failed: ${e.message}`);
+            const message = String(e.message).startsWith("Search failed")
+              ? String(e.message)
+              : `Search failed: ${e.message}`;
+            console.error(message);
+            if (message === e.message) throw e;
+            throw new Error(message);
           }
         });
 
@@ -958,9 +982,11 @@ export default {
               ["bash", "-c", `${memsearch} stats --default-collection ${collection}`],
               { timeoutMs: 10000, cwd: projectDir }
             );
-            if (result.stdout) process.stdout.write(result.stdout);
-          } catch {
-            console.log("Stats: (unavailable — collection may not exist yet)");
+            const failure = commandFailure("Stats", result);
+            if (failure) console.log(failure);
+            else if (result.stdout) process.stdout.write(result.stdout);
+          } catch (e: any) {
+            console.log(`Stats failed: ${e.message}`);
           }
         });
     }, {

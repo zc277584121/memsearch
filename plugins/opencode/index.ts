@@ -183,6 +183,13 @@ function wakeMaintenance(projectDir: string, memsearchDir: string): void {
   );
 }
 
+function commandFailure(action: string, result: ReturnType<typeof spawnSync>): string | null {
+  if (result.error) return `${action} failed: ${result.error.message}`;
+  if (result.status === 0) return null;
+  const detail = String(result.stderr || result.stdout || result.signal || "unknown error").trim();
+  return `${action} failed (exit ${result.status ?? "unknown"}): ${detail}`;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin entry
 // ---------------------------------------------------------------------------
@@ -265,6 +272,8 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
               ],
               { cwd: dir, encoding: "utf-8", timeout: 30000 }
             );
+            const failure = commandFailure("Search", result);
+            if (failure) return failure;
             return result.stdout || result.stderr || "No results found.";
           } catch (e: any) {
             return `Search failed: ${e.message}`;
@@ -294,6 +303,8 @@ const MemsearchPlugin: Plugin = async ({ project, directory, worktree }) => {
               ],
               { cwd: dir, encoding: "utf-8", timeout: 15000 }
             );
+            const failure = commandFailure("Expand", result);
+            if (failure) return failure;
             return result.stdout || result.stderr || "No content found.";
           } catch (e: any) {
             return `Expand failed: ${e.message}`;

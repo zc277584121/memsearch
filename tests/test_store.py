@@ -14,7 +14,7 @@ from memsearch.store import MilvusStore, _local_open_error_message
 @pytest.fixture
 def store(tmp_path: Path):
     db = tmp_path / "test_milvus.db"
-    s = MilvusStore(uri=str(db), dimension=4)
+    s = MilvusStore(uri=str(db), dimension=4, _create_if_missing=True)
     yield s
     s.close()
 
@@ -288,7 +288,7 @@ def test_hybrid_search(store: MilvusStore):
 def test_dimension_mismatch(tmp_path: Path):
     db = str(tmp_path / "dim_test.db")
     # Create collection with dim=4
-    s1 = MilvusStore(uri=db, dimension=4)
+    s1 = MilvusStore(uri=db, dimension=4, _create_if_missing=True)
     s1.close()
     # Re-open with dim=8 — should raise ValueError
     with pytest.raises(ValueError, match="Embedding dimension mismatch"):
@@ -345,7 +345,7 @@ def test_collection_description(tmp_path: Path):
     """Description is best-effort metadata and is not required for search."""
     db = str(tmp_path / "desc_test.db")
     desc = "myproject | openai/text-embedding-3-small"
-    s = MilvusStore(uri=db, dimension=4, description=desc)
+    s = MilvusStore(uri=db, dimension=4, description=desc, _create_if_missing=True)
     info = s._client.describe_collection(s._collection)
     assert info.get("description", "") in ("", desc)
     s.upsert(
@@ -370,7 +370,7 @@ def test_collection_description(tmp_path: Path):
 def test_collection_description_empty_by_default(tmp_path: Path):
     """An empty description must not prevent collection creation."""
     db = str(tmp_path / "desc_default_test.db")
-    s = MilvusStore(uri=db, dimension=4)
+    s = MilvusStore(uri=db, dimension=4, _create_if_missing=True)
     info = s._client.describe_collection(s._collection)
     assert info.get("description") == ""
     s.close()
@@ -397,6 +397,7 @@ def test_windows_local_uri_reaches_milvus_client(monkeypatch: pytest.MonkeyPatch
         MilvusClient = FakeMilvusClient
 
     db = tmp_path / "windows-local.db"
+    db.touch()
     with monkeypatch.context() as patch:
         patch.setitem(sys.modules, "pymilvus", FakePyMilvus())
         patch.setattr(sys, "platform", "win32")
