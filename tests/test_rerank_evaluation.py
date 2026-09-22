@@ -70,7 +70,7 @@ def test_full_runner_resumes_cached_bilingual_responses_without_credentials(tmp_
         )
         for provider in ("jev", "voyage"):
             if provider == "jev":
-                payload = evaluation.JevReranker().build_request(query["query"], docs)
+                payload = evaluation.JevReranker(model="jev-1.13.0").build_request(query["query"], docs)
                 raw = {
                     "model": "jev-1.13.0",
                     "usage": {"input_tokens": 100},

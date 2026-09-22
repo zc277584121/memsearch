@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-DEFAULT_MODEL = "jev-1.13.0"
+DEFAULT_MODEL = "jev-latest"
 ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
 # Adapted from https://docs.typesafe.ai/cookbooks/rerank_typesafe.

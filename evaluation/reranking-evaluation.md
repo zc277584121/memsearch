@@ -133,7 +133,7 @@ Recall@1/5/10 breakdowns are available in the aggregate JSON and CSV.
 
 ### Visual comparison
 
-![MemSearch reranking quality and estimated API cost](../assets/evaluation/memsearch-reranking-comparison.png)
+![MemSearch reranking quality and estimated API cost](../docs/assets/evaluation/memsearch-reranking-comparison.png)
 
 The four panels summarize aggregate Recall@5, MRR@10, NDCG@10 and estimated
 reranking API cost per 1,000 queries. Jev improves Recall@5 by 4.70 percentage
@@ -250,5 +250,5 @@ memsearch config set reranker.model jev:jev-1.13.0
 ```
 
 Use trusted global configuration, not project-local configuration. Queries and
-candidate contents are sent to TypeSafe. See [configuration](configuration.md#optional-remote-reranking)
-and the [Python API](../python-api.md#optional-jev-reranking) for details.
+candidate contents are sent to TypeSafe. See [configuration](../docs/home/configuration.md#optional-remote-reranking)
+and the [Python API](../docs/python-api.md#optional-jev-reranking) for details.

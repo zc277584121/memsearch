@@ -411,13 +411,13 @@ provider after RRF fusion. To enable Jev in trusted global configuration:
 
 ```bash
 export TYPESAFE_API_KEY="your-key"
-memsearch config set reranker.model jev:jev-1.13.0
+memsearch config set reranker.model jev:jev-latest
 memsearch search "how to configure Redis caching"
 ```
 
 This sends the query and candidate contents to TypeSafe and requires no local
 reranker weights. It is disabled by default. See [reranker configuration](home/configuration.md#optional-remote-reranking)
-and the [bilingual evaluation](home/reranking-evaluation.md).
+and the [bilingual evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md).
 
 ### Options
 

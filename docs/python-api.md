@@ -57,14 +57,14 @@ MemSearch(
 | `exclude` | `list[str] \| None` | `None` | Additional gitignore-style patterns relative to each directory index root |
 
 `reranker_model` defaults to an empty string (disabled). Set a local
-cross-encoder model ID or `jev:jev-1.13.0` for remote Jev reranking.
+cross-encoder model ID or `jev:jev-latest` for remote Jev reranking.
 
 ### Optional Jev reranking
 
 Set `TYPESAFE_API_KEY` in the environment, then select Jev explicitly:
 
 ```python
-mem = MemSearch(paths=["./memory"], reranker_model="jev:jev-1.13.0")
+mem = MemSearch(paths=["./memory"], reranker_model="jev:jev-latest")
 results = await mem.search("Why was the cache policy changed?", top_k=5)
 ```
 
@@ -88,11 +88,13 @@ ranked = JevReranker().rerank(
 )
 ```
 
+`JevReranker()` defaults to the official `jev-latest` alias. For a fixed version, use `JevReranker(model="jev-1.13.0")` (or `reranker_model="jev:jev-1.13.0"` through `MemSearch`). The API resolves the alias; `evaluate()` returns the actual version in its `model` field. See [official model aliases](https://docs.typesafe.ai/models#aliases).
+
 Other candidate fields are preserved, and `score` becomes the returned Noul
 probability. Ties retain the original order. This probability is used for
 ranking; no accept/reject threshold has been calibrated for this dataset.
 
-See the [reranking evaluation](home/reranking-evaluation.md) for the frozen
+See the [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for the frozen
 candidate comparison with Voyage and its limitations.
 
 ### Context Manager

@@ -53,15 +53,17 @@ your trusted global configuration:
 
 ```bash
 export TYPESAFE_API_KEY="your-key"
-memsearch config set reranker.model jev:jev-1.13.0
+memsearch config set reranker.model jev:jev-latest
 ```
 
 The equivalent setting in `~/.memsearch/config.toml` is:
 
 ```toml
 [reranker]
-model = "jev:jev-1.13.0"
+model = "jev:jev-latest"
 ```
+
+`jev-latest` follows the latest stable release, matching the [official SDK default](https://docs.typesafe.ai/models#aliases). To keep a specific version, use `jev:jev-1.13.0` instead. The published evaluation remains pinned to that version.
 
 This sends search queries and retrieved chunk text to the TypeSafe API. It does
 not change the embedding provider or require reindexing. Project-local config
@@ -72,7 +74,7 @@ memsearch config set reranker.model ""
 ```
 
 Local cross-encoder model IDs continue to use the existing ONNX/PyTorch
-backends. See [reranking evaluation](reranking-evaluation.md) for results and
+backends. See [reranking evaluation](https://github.com/zilliztech/memsearch/blob/main/evaluation/reranking-evaluation.md) for results and
 [Python API](../python-api.md#optional-jev-reranking) for programmatic use.
 
 ## Index Exclusions

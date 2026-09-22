@@ -24,7 +24,8 @@ def response(scores):
     }
 
 
-def test_batched_request_preserves_content_and_metadata(monkeypatch):
+@pytest.mark.parametrize("model", ["jev-latest", "jev-1.13.0"])
+def test_batched_request_preserves_content_and_metadata(monkeypatch, model):
     candidates = [
         {"content": "long memory " * 2000, "source": "a.md", "score": 9},
         {"content": "second", "source": "b.md", "chunk_id": "b"},
@@ -39,13 +40,14 @@ def test_batched_request_preserves_content_and_metadata(monkeypatch):
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     monkeypatch.setattr("urllib.request.urlopen", open_request)
-    ranked = rerank("question", candidates, model_name="jev:jev-1.13.0", top_k=2)
+    ranked = rerank("question", candidates, model_name=f"jev:{model}", top_k=2)
     assert [r["source"] for r in ranked] == ["b.md", "c.md"]
     assert ranked[0]["chunk_id"] == "b"
     assert candidates == before
     assert len(calls) == 1
     request, timeout = calls[0]
     payload = json.loads(request.data)
+    assert payload["model"] == model
     assert payload["state"] == {"query_excerpt": "question"}
     assert len(payload["questions"]) == 3
     assert payload["questions"]["d0"]["instructions"].endswith(candidates[0]["content"])
@@ -147,3 +149,16 @@ async def test_search_fetches_extra_candidates_and_returns_jev_top_k(monkeypatch
     results = await mem.search("question", top_k=2)
     assert [r["chunk_id"] for r in results] == ["3", "5"]
     assert store.search.call_args.kwargs["top_k"] == 6
+
+
+def test_default_alias_preserves_resolved_response_version(monkeypatch):
+    seen = []
+
+    def open_request(request, timeout):
+        seen.append(json.loads(request.data)["model"])
+        return io.BytesIO(json.dumps(response([0.8])).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", open_request)
+    result = JevReranker(api_key="test-key").evaluate("question", ["memory"])
+    assert seen == ["jev-latest"]
+    assert result["model"] == "jev-1.13.0"

@@ -4,7 +4,7 @@ This document describes the evaluation methodology and results used to select th
 
 ## Reranking evaluation
 
-The full bilingual comparison of frozen retrieval order, Jev, and Voyage rerank-3 is documented in [Reranking Evaluation](../docs/home/reranking-evaluation.md). The executable runner is [`rerank_evaluate.py`](rerank_evaluate.py); aggregate results are stored in [`reranking-results.json`](reranking-results.json). The private memory corpus and per-query outputs are not published.
+The full bilingual comparison of frozen retrieval order, Jev, and Voyage rerank-3 is documented in [Reranking Evaluation](reranking-evaluation.md). The executable runner is [`rerank_evaluate.py`](rerank_evaluate.py); aggregate results are stored in [`reranking-results.json`](reranking-results.json). The private memory corpus and per-query outputs are not published.
 
 ## Goal
 
@@ -140,7 +140,7 @@ uvx --from 'memsearch[onnx]' memsearch search --provider onnx "warmup" 2>/dev/nu
 
 ### Metric continuity for reranking
 
-The [reranking evaluation](../docs/home/reranking-evaluation.md#metrics) reports
+The [reranking evaluation](reranking-evaluation.md#metrics) reports
 **Hit@K**, matching this historical table's any-positive metric labeled Recall@K,
 alongside **Recall@K**, the fraction of labeled positives retrieved. Use Hit@K
 for the same metric definition; English candidate selection still differs,

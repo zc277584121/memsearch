@@ -256,7 +256,7 @@ def rerank(
         Search results from MilvusStore.search(). Each dict must have
         a ``content`` key with the chunk text.
     model_name:
-        HuggingFace model ID for the cross-encoder, or ``jev:jev-1.13.0``
+        HuggingFace model ID for the cross-encoder, or ``jev:jev-latest``
         for remote reranking using ``TYPESAFE_API_KEY``.
     top_k:
         Return only the top-k results after reranking.

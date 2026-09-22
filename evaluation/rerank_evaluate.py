@@ -85,7 +85,8 @@ def main() -> None:
     args = parser.parse_args()
     if not 1 <= args.workers <= 12:
         parser.error("workers must be between 1 and 12")
-    jev = JevReranker()
+    # Keep the published experiment reproducible when the runtime default advances.
+    jev = JevReranker(model="jev-1.13.0")
     candidates_rows = json.loads(args.candidates.read_text())
     candidates = {r["query_id"]: r["retrieved_ids"] for r in candidates_rows}
     if len(candidates) != len(candidates_rows):
