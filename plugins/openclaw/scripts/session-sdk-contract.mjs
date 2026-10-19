@@ -1,4 +1,6 @@
 // Optional integration contract: node scripts/session-sdk-contract.mjs /path/to/openclaw
+// Supply the installed host's redaction export module after the package directory
+// to also exercise its actual model-facing tool-output redaction.
 // Uses only task-owned synthetic sessions and public SDK exports. No model/TUI,
 // authentication, network delivery or real MemSearch indexing is invoked.
 import assert from "node:assert/strict";
@@ -90,6 +92,30 @@ assert.equal(visibility.resolveEffectiveSessionToolsVisibility({ cfg, sandboxed:
 const toolResult = await tool.execute("fresh-no-audience", { transcript_path: reference });
 assert.match(toolResult.content[0].text, /\[User\]:.*copper pipit/);
 record("hook-generated SQLite reference -> fresh session tool, default all, no audience");
+if (process.argv[3]) {
+  const { redactModelVisibleToolPayloadTextWithConfig: redact } = await import(pathToFileURL(resolve(process.argv[3])));
+  assert.equal(typeof redact, "function", "Supply the host's named redaction export module");
+  const credentialQuery = new URL(reference);
+  credentialQuery.searchParams.delete("sessionKey");
+  credentialQuery.searchParams.set("key", source.sessionKey);
+  assert.notEqual(redact(credentialQuery.href, {}), credentialQuery.href,
+    "The real credential-query redactor must remain active");
+  for (const [name, payload] of [
+    ["memory_get", memory],
+    ["memory_search", JSON.stringify([{ chunk_hash: "fixture", content: memory }])],
+  ]) {
+    const visible = redact(payload, {});
+    assert.equal(visible, payload, `${name} must preserve the emitted reference`);
+    const content = name === "memory_search" ? JSON.parse(visible)[0].content : visible;
+    const modelReference = content.match(/<!-- session:\S+ transcript:(\S+) -->/)?.[1];
+    assert.equal(modelReference, reference);
+    assert.equal(new URL(modelReference).searchParams.get("sessionKey"), source.sessionKey);
+    const result = await tool.execute(`redacted-${name}`, { transcript_path: modelReference });
+    assert.match(result.content[0].text, /\[User\]:.*copper pipit/);
+    assert.match(result.content[0].text, /\[Assistant\]:.*746/);
+    record(`${name} -> actual host redaction -> unchanged reference -> fresh transcript tool`);
+  }
+}
 await allowed("default all");
 cfg.tools = { sessions: { visibility: "agent" } }; await allowed("agent policy");
 cfg.tools.sessions.visibility = "self";
@@ -109,13 +135,13 @@ for (const metadata of [{ visibility: "draft" }, { visibility: "read-only" }, { 
   const hidden = await session(`hidden-${checks.length}`, metadata);
   await denied(`reject target ${JSON.stringify(metadata)}`, await access.capture(hidden), caller, /metadata/);
 }
-const missing = new URL(reference); missing.searchParams.set("key", "agent:review:missing");
+const missing = new URL(reference); missing.searchParams.set("sessionKey", "agent:review:missing");
 await denied("unknown exact key", missing.href, caller, /metadata/);
 const forgedId = new URL(reference); forgedId.pathname = `/${fresh.sessionId}`;
 await denied("forged target id", forgedId.href, caller, /metadata/);
-const forgedKey = new URL(reference); forgedKey.searchParams.set("key", fresh.sessionKey);
+const forgedKey = new URL(reference); forgedKey.searchParams.set("sessionKey", fresh.sessionKey);
 await denied("existing key with another incarnation id", forgedKey.href, caller, /metadata/);
-for (const [key, value] of [["store", "/foreign/profile/sessions.json"], ["key", "agent:other:capture"], ["key", "agent:review:incognito:fixture"]]) {
+for (const [key, value] of [["store", "/foreign/profile/sessions.json"], ["sessionKey", "agent:other:capture"], ["sessionKey", "agent:review:incognito:fixture"]]) {
   const forged = new URL(reference); forged.searchParams.set(key, value);
   await denied(`forged ${key}=${value}`, forged.href);
 }

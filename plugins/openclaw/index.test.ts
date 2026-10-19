@@ -220,7 +220,7 @@ test("SDK transcript scope, exact metadata and live guards cannot be replaced by
     { assertInvocationCurrent() { throw new Error("stale invocation"); } },
     { assertMemoryAudienceCurrent() { throw new Error("stale host guard"); } },
   ]) await assert.rejects(access.read(reference, { ...caller, ...overrides }));
-  for (const [field, value] of [["store", "/another-profile/sessions.json"], ["key", "agent:other:capture"], ["key", "agent:review:incognito:capture"]]) {
+  for (const [field, value] of [["store", "/another-profile/sessions.json"], ["sessionKey", "agent:other:capture"], ["sessionKey", "agent:review:incognito:capture"]]) {
     const foreign = new URL(reference); foreign.searchParams.set(field, value);
     await assert.rejects(access.read(foreign.href, caller));
   }
@@ -865,7 +865,8 @@ test("capture freezes identity and configured store before SDK loading yields", 
   release();
   const reference = new URL(await capture);
   assert.equal(reference.pathname, "/capture-a");
-  assert.equal(reference.searchParams.get("key"), expected.sessionKey);
+  assert.equal(reference.searchParams.get("sessionKey"), expected.sessionKey);
+  assert.equal(reference.searchParams.has("key"), false);
   assert.equal(reference.searchParams.get("store"), expected.storePath);
 });
 

@@ -382,7 +382,8 @@ export function createTranscriptAccess(runtime: any, config: any = {}, loadSdk =
         await checkedIdentity(reader, scope);
         assertCaller(ctx);
         const ref = new URL(`${SESSION_REFERENCE_PREFIX}//${encodeURIComponent(agentId)}/${encodeURIComponent(scope.sessionId)}`);
-        ref.searchParams.set("key", scope.sessionKey);
+        // Explicit session metadata survives the host's credential-query redaction.
+        ref.searchParams.set("sessionKey", scope.sessionKey);
         ref.searchParams.set("store", store);
         return ref.href;
       }
@@ -419,7 +420,7 @@ export function createTranscriptAccess(runtime: any, config: any = {}, loadSdk =
       const ref = new URL(reference);
       const scope = {
         agentId: decodeURIComponent(ref.hostname), sessionId: decodeURIComponent(ref.pathname.slice(1)),
-        sessionKey: ref.searchParams.get("key"), storePath: ref.searchParams.get("store"),
+        sessionKey: ref.searchParams.get("sessionKey"), storePath: ref.searchParams.get("store"),
       };
       if (!scope.agentId || !scope.sessionId || !scope.sessionKey || !scope.storePath || !isAbsolute(scope.storePath) || ref.username || ref.password || ref.port || ref.hash) {
         throw new Error("Invalid OpenClaw session transcript reference");

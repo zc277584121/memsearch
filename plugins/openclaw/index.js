@@ -285,7 +285,7 @@ function createTranscriptAccess(runtime, config = {}, loadSdk = loadTranscriptSd
         await checkedIdentity(reader, scope);
         assertCaller(ctx);
         const ref = new URL(`${SESSION_REFERENCE_PREFIX}//${encodeURIComponent(agentId)}/${encodeURIComponent(scope.sessionId)}`);
-        ref.searchParams.set("key", scope.sessionKey);
+        ref.searchParams.set("sessionKey", scope.sessionKey);
         ref.searchParams.set("store", store);
         return ref.href;
       }
@@ -320,7 +320,7 @@ function createTranscriptAccess(runtime, config = {}, loadSdk = loadTranscriptSd
       const scope = {
         agentId: decodeURIComponent(ref.hostname),
         sessionId: decodeURIComponent(ref.pathname.slice(1)),
-        sessionKey: ref.searchParams.get("key"),
+        sessionKey: ref.searchParams.get("sessionKey"),
         storePath: ref.searchParams.get("store")
       };
       if (!scope.agentId || !scope.sessionId || !scope.sessionKey || !scope.storePath || !isAbsolute(scope.storePath) || ref.username || ref.password || ref.port || ref.hash) {

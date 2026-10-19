@@ -87,7 +87,7 @@ The LLM decides how deep to go based on the question — simple recall uses only
 
 On SDK hosts, explicit L3 reads follow the host's configured `tools.sessions.visibility` policy. The default `all` and `agent` permit historical sessions within the calling profile/store and agent; `self` restricts reads to the current key, and `tree` uses trusted host ownership metadata. The exact historical key and session ID must still match. This explicit history permission does not require a memory audience and does not authorize automatic recall or capture into other audiences.
 
-The plugin conservatively rejects role-controlled cross-session reads, draft/incognito or unconfirmed target metadata, sandboxed/workspace-confined callers, and unsupported auxiliary/global read scopes. Scoped-grant-only access is not supported. On SDK hosts, use the emitted `openclaw-session:` reference; legacy paths cannot bypass policy checks. See the compatibility report for the public SDK's authorization limits. **Real model-driven TUI capture and fresh-session recall have not yet passed validation for this candidate.**
+The plugin conservatively rejects role-controlled cross-session reads, draft/incognito or unconfirmed target metadata, sandboxed/workspace-confined callers, and unsupported auxiliary/global read scopes. Scoped-grant-only access is not supported. On SDK hosts, use the emitted `openclaw-session:` reference; legacy paths cannot bypass policy checks. The source candidate passed real TUI capture, automatic API summarization/indexing, and fresh-session three-tool recall on OpenClaw 2026.10.5. See the [compatibility report](reports/compatibility.md) for the tested configuration and authorization limits.
 
 On older hosts without the SDK, standard `<sessionId>.jsonl` files remain supported inside the current agent's host-resolved session store. Paths outside that store, including escaping symlinks, are rejected. Restricted `self`/`tree` policies and role-controlled configurations reject cross-session legacy paths whose target metadata cannot be confirmed. Automatic capture omits an anchor when the standard file is absent; topic suffixes and custom `sessionFile` paths are not guessed.
 
@@ -121,7 +121,7 @@ When `MEMSEARCH_DIR` is set:
 
 ## Configuration
 
-Works out of the box with zero configuration (ONNX embedding, no API key needed).
+ONNX embeddings run locally without an API key. Summarization uses the configured OpenClaw model or a named MemSearch API provider.
 
 Optional settings via `openclaw plugins config memsearch`:
 
@@ -137,16 +137,19 @@ To override only the OpenClaw native capture summarization model:
 memsearch config set plugins.openclaw.summarize.model qwen3-coder
 ```
 
-To use a memsearch-managed API provider instead:
+For API summaries, make `OPENAI_API_KEY` available to the OpenClaw process and configure the MemSearch home used by that process. The following configuration passed real capture and recall with `gpt-5.6-luna`:
 
 ```bash
 memsearch config set llm.providers.openai.type openai
-memsearch config set llm.providers.openai.model gpt-5-mini
+memsearch config set llm.providers.openai.base_url https://api.openai.com/v1
 memsearch config set llm.providers.openai.api_key env:OPENAI_API_KEY
 memsearch config set plugins.openclaw.summarize.provider openai
+memsearch config set plugins.openclaw.summarize.model gpt-5.6-luna
 ```
 
-Leave `plugins.openclaw.summarize.provider` empty or set it to `native` to keep the default OpenClaw agent model. This setting does not fall back to `llm.model`.
+This stores an environment reference for the key and sends summaries through MemSearch's OpenAI provider. Embeddings remain on the configured provider, including ONNX. The OpenClaw inference model and its authentication are configured separately.
+
+An empty or `native` summary provider uses `openclaw agent --local` with the configured summary model, or the OpenClaw agent model when no summary model is set. It does not fall back to `llm.model`. On OpenClaw 2026.10.5, a live local TUI can hold the state-database ownership lock and prevent that native summary child from starting. Capture then saves the truncated raw-turn fallback. Use the API summary configuration above for the verified local-TUI path; native summarization has not passed this E2E.
 
 ## Memory files
 
@@ -163,7 +166,7 @@ Each agent's memory is stored as plain markdown:
 - OpenClaw explained core components: chunker, scanner, embedder, MilvusStore.
 ```
 
-This example uses a legacy JSONL anchor. SDK hosts emit an `openclaw-session:` reference with the exact session identity and host-resolved store selector. Pass that reference unchanged to `memory_transcript`; it is a locator, not an authorization grant.
+This example uses a legacy JSONL anchor. SDK hosts emit an `openclaw-session:` reference with the exact session identity and host-resolved store selector. The non-secret session selector uses the `sessionKey` query field so it survives the host's model-facing credential redaction. Pass that reference unchanged to `memory_transcript`; it is a locator, not an authorization grant.
 
 These files are human-readable, editable, and version-controllable. Milvus is a derived index that can be rebuilt anytime.
 
