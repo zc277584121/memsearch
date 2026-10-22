@@ -8,6 +8,7 @@ import re
 import sqlite3
 import subprocess
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 
@@ -64,6 +65,7 @@ def open_source(path: str) -> sqlite3.Connection:
     return conn
 
 
+@cache
 def project_root(directory: str) -> str:
     """Resolve a checkout, keeping unrelated non-Git directories distinct."""
     path = Path(directory).resolve(strict=True)

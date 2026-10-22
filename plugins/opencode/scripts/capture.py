@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from opencode_turns import Scope, build_turns, get_db_path, open_source, session_ids, session_row
+from opencode_turns import Scope, build_turns, get_db_path, open_source, project_root, session_ids, session_row
 
 UNAVAILABLE = (
     "- Memory summary unavailable: summarizer failed or returned no usable output; "
@@ -242,6 +242,8 @@ def source_key(db_path, scope):
 
 
 def capture_batch(conn, store, scope, db_path, summarizer, *, enabled=True, initialize=False):
+    # Reuse directory lookups within this finite scan, not across batches.
+    project_root.cache_clear()
     source = source_key(db_path, scope)
     fresh = store.db.execute("SELECT 1 FROM v2_sources WHERE source=?", (source,)).fetchone() is None
     if fresh and initialize:
@@ -314,6 +316,7 @@ def capture_batch(conn, store, scope, db_path, summarizer, *, enabled=True, init
                 store.stage_entry(source, turn, summary, db_path)
                 pending = store.pending(source, turn)
             # Inference can outlive a session move or a projection update.
+            project_root.cache_clear()
             session_row(conn, session_id, scope)
             latest = next((t for t in build_turns(conn, session_id, cursor) if t.turn_id == turn.turn_id), None)
             if latest is None or latest.status != "complete":

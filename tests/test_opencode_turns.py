@@ -271,6 +271,67 @@ def test_git_subdirectory_owned_but_worktree_separate(fixture, tmp_path):
     assert reader.session_ids(fixture.conn, fixture.scope) == ["alias", "nested", "session"]
 
 
+def test_idle_capture_resolves_each_directory_once(fixture, store, tmp_path, monkeypatch):
+    from collections import Counter
+
+    sibling = tmp_path / "other-project"
+    sibling.mkdir()
+    for index in range(20):
+        fixture.session(f"own-{index}")
+        fixture.session(f"foreign-{index}", directory=sibling)
+    fixture.batch(store, initialize=True)
+    calls = Counter()
+    original_run = reader.subprocess.run
+
+    def count_git(command, *args, **kwargs):
+        if command[:2] == ["git", "-C"]:
+            calls[command[2]] += 1
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(reader.subprocess, "run", count_git)
+    assert fixture.batch(store)[1] == 0
+    assert calls == {str(fixture.root): 1, str(sibling): 1}
+    assert fixture.journals() == ""
+
+
+def test_capture_refreshes_directory_ownership_between_batches(fixture, store, tmp_path):
+    sibling = tmp_path / "other-project"
+    sibling.mkdir()
+    alias = tmp_path / "project-alias"
+    alias.symlink_to(fixture.root, target_is_directory=True)
+    fixture.session("alias", directory=alias)
+    fixture.turn(session="alias")
+    fixture.batch(store, initialize=True)
+
+    alias.unlink()
+    alias.symlink_to(sibling, target_is_directory=True)
+    fixture.turn(40, session="alias")
+    queries = []
+    fixture.conn.set_trace_callback(queries.append)
+    assert fixture.batch(store)[1] == 0
+    assert not any("data FROM session_message" in query and "'alias'" in query for query in queries)
+    assert fixture.journals() == ""
+
+
+def test_capture_rechecks_directory_ownership_after_summary(fixture, store, tmp_path):
+    sibling = tmp_path / "other-project"
+    sibling.mkdir()
+    alias = tmp_path / "project-alias"
+    alias.symlink_to(fixture.root, target_is_directory=True)
+    fixture.session("alias", directory=alias)
+    fixture.turn(session="alias")
+
+    def move_during_summary(_turn):
+        alias.unlink()
+        alias.symlink_to(sibling, target_is_directory=True)
+        return "- Safe summary."
+
+    with pytest.raises(reader.TranscriptError, match="outside"):
+        fixture.batch(store, move_during_summary)
+    assert fixture.journals() == ""
+    assert store.db.execute("SELECT count(*) FROM v2_pending").fetchone()[0] == 1
+
+
 def test_foreign_payload_is_never_selected(fixture, store, tmp_path):
     from tests.opencode_v2_fixtures import parser
 
