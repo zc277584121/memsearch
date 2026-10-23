@@ -120,8 +120,8 @@ memsearch index docs/ --exclude 'generated/**' --exclude '*.draft.md'
 
 ## Embedding Provider
 
-The Claude Code, Codex, OpenClaw, and OpenCode plugins select ONNX when no
-configuration exists. DSH follows the CLI configuration, which defaults to
+The Claude Code, Codex, OpenClaw, OpenCode, and DSH plugins select ONNX when no
+configuration exists and preserve existing configuration. The CLI defaults to
 OpenAI. The Python API also defaults to OpenAI and takes its settings directly
 as constructor arguments, such as `embedding_provider="onnx"` for local embeddings.
 
