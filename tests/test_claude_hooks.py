@@ -838,14 +838,42 @@ exit 0
         assert hint in status
 
 
-def test_claude_stop_hook_writes_summary_without_safe_mode_flag(tmp_path: Path) -> None:
-    script = Path("plugins/claude-code/hooks/stop.sh")
-    plugin_root = Path("plugins/claude-code").resolve()
+@pytest.mark.parametrize(
+    ("root_state", "prompt_kind"),
+    [
+        ("valid", "bundled"),
+        ("unset", "bundled"),
+        ("empty", "bundled"),
+        ("wrong", "bundled"),
+        ("unset", "custom"),
+        ("unset", "missing-custom"),
+        ("unset", "inline"),
+    ],
+)
+def test_claude_stop_hook_writes_summary_without_safe_mode_flag(
+    tmp_path: Path, root_state: str, prompt_kind: str
+) -> None:
+    plugin_root = tmp_path / "plugin with spaces"
+    shutil.copytree("plugins/claude-code", plugin_root)
+    script = plugin_root / "hooks" / "stop.sh"
+    bundled_prompt = plugin_root / "prompts" / "summarize.txt"
+    expected_prompt = bundled_prompt.read_text(encoding="utf-8").replace("{{AGENT_NAME}}", "Claude Code").rstrip()
+    custom_prompt = ""
+    if prompt_kind == "custom":
+        custom_prompt = "custom prompt.txt"
+        (tmp_path / custom_prompt).write_text("Custom notes for {{AGENT_NAME}}.", encoding="utf-8")
+        expected_prompt = "Custom notes for Claude Code."
+    elif prompt_kind == "missing-custom":
+        custom_prompt = "missing prompt.txt"
+    elif prompt_kind == "inline":
+        bundled_prompt.unlink()
+        expected_prompt = "You are a third-person note-taker."
     home = tmp_path / "home"
     fake_bin = tmp_path / "bin"
     memsearch_dir = tmp_path / ".memsearch"
     transcript = tmp_path / "session-123.jsonl"
     claude_args = tmp_path / "claude-args.txt"
+    claude_input = tmp_path / "claude-input.txt"
     home.mkdir()
     fake_bin.mkdir()
     transcript.write_text(
@@ -874,7 +902,7 @@ if [ "$1" = "config" ] && [ "$2" = "get" ]; then
     plugins.claude-code.summarize.enabled) echo "true" ;;
     plugins.claude-code.summarize.model) echo "" ;;
     plugins.claude-code.summarize.provider) echo "" ;;
-    prompts.summarize) echo "" ;;
+    prompts.summarize) echo "$TEST_CUSTOM_PROMPT" ;;
     *) echo "" ;;
   esac
   exit 0
@@ -896,6 +924,7 @@ if [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 printf '%s\n' "$@" > "$CLAUDE_ARGS_FILE"
+cat > "$CLAUDE_INPUT_FILE"
 echo "- User discussed a macOS stop hook regression."
 """,
         encoding="utf-8",
@@ -910,7 +939,15 @@ echo "- User discussed a macOS stop hook regression."
         "CLAUDE_PROJECT_DIR": str(tmp_path),
         "MEMSEARCH_DIR": str(memsearch_dir),
         "CLAUDE_ARGS_FILE": str(claude_args),
+        "CLAUDE_INPUT_FILE": str(claude_input),
+        "TEST_CUSTOM_PROMPT": custom_prompt,
     }
+    if root_state == "unset":
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+    elif root_state == "empty":
+        env["CLAUDE_PLUGIN_ROOT"] = ""
+    elif root_state == "wrong":
+        env["CLAUDE_PLUGIN_ROOT"] = str(tmp_path / "unrelated plugin")
     result = subprocess.run(
         ["bash", str(script)],
         input=json.dumps({"transcript_path": str(transcript)}),
@@ -925,6 +962,9 @@ echo "- User discussed a macOS stop hook regression."
     assert len(memory_files) == 1
     memory_text = memory_files[0].read_text(encoding="utf-8")
     assert "macOS stop hook regression" in memory_text
+    assert "session:session-123 turn:turn-1" in memory_text
+    assert "Summarize this session" not in memory_text
+    assert claude_input.read_text(encoding="utf-8").startswith(expected_prompt)
 
     captured_args = claude_args.read_text(encoding="utf-8").splitlines()
     assert captured_args[:4] == ["-p", "--strict-mcp-config", "--tools", ""]
