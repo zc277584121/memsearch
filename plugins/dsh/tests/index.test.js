@@ -6,7 +6,7 @@ import os from 'node:os'
 
 import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
 
-async function withInjectionFixture(searchResults, assertion, oldCore = false, searchError = '') {
+async function withInjectionFixture(searchResults, assertion, oldCore = false, searchError = '', configs = {}) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
   const projectDir = `${root}/project`
   const memoryDir = `${root}/state/memory`
@@ -16,6 +16,13 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
   fs.mkdirSync(projectDir, { recursive: true })
   fs.mkdirSync(memoryDir, { recursive: true })
   fs.mkdirSync(fakeBin, { recursive: true })
+  const home = `${root}/home`
+  fs.mkdirSync(home, { recursive: true })
+  if (configs.global !== undefined) {
+    fs.mkdirSync(`${home}/.memsearch`, { recursive: true })
+    fs.writeFileSync(`${home}/.memsearch/config.toml`, configs.global)
+  }
+  if (configs.project !== undefined) fs.writeFileSync(`${projectDir}/.memsearch.toml`, configs.project)
   fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
   fs.writeFileSync(resultFile, JSON.stringify(searchResults), 'utf-8')
   fs.writeFileSync(
@@ -80,12 +87,15 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
         error,
         warnings,
         registeredSkillNames: registeredSkills.map((skill) => skill.name),
+        recallSkill: registeredSkills.find((skill) => skill.name === 'memory-recall')?.content,
       }))
     `
     const stdout = execFileSync(process.execPath, ['--input-type=module', '--eval', childSource], {
       encoding: 'utf-8',
+      cwd: projectDir,
       env: {
         ...process.env,
+        HOME: home,
         PATH: `${fakeBin}:${process.env.PATH}`,
         BASH_ENV: '/dev/null',
         MEMSEARCH_DIR: `${root}/state`,
@@ -98,10 +108,49 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
         MEMSEARCH_TEST_SEARCH_ERROR: searchError,
       },
     })
-    await assertion({ ...JSON.parse(stdout), callLog })
+    await assertion({ ...JSON.parse(stdout), callLog, home, projectDir, fakeBin, resultFile })
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
+}
+
+for (const [name, configs, useOnnx] of [
+  ['no configuration', {}, true],
+  ['existing global provider', { global: '[embedding]\nprovider = "ollama"\nmodel = "nomic-embed-text"\n' }, false],
+  ['existing empty global configuration', { global: '' }, false],
+  ['existing project configuration', { project: '[milvus]\ncollection = "existing_index"\n' }, false],
+]) {
+  test(`embedding defaults: ${name} applies consistently without changing configuration`, async () => {
+    await withInjectionFixture([], async ({ callLog, recallSkill, home, projectDir, fakeBin, resultFile }) => {
+      // Execute the command exposed to the agent as well as the automatic hook.
+      const searchBlock = recallSkill.match(/```bash\n([\s\S]*?)```/)[1]
+        .replaceAll('{{QUERY}}', 'release decision')
+      execFileSync('/usr/bin/bash', ['--noprofile', '--norc', '-c', searchBlock], {
+        cwd: projectDir,
+        env: {
+          ...process.env, HOME: home, PATH: `${fakeBin}:/usr/bin:/bin`, BASH_ENV: '/dev/null',
+          MEMSEARCH_TEST_PATH: `${fakeBin}:/usr/bin:/bin`, MEMSEARCH_TEST_CALL_LOG: callLog,
+          MEMSEARCH_TEST_RESULT: resultFile,
+        },
+      })
+      const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
+      const embeddingCalls = calls.filter((call) => /^(search|index) /.test(call))
+      assert.equal(embeddingCalls.filter((call) => call.startsWith('search ')).length, 2)
+      assert.ok(embeddingCalls.some((call) => call.startsWith('index ')), 'startup index must run')
+      for (const call of embeddingCalls) {
+        assert.equal(/ --provider onnx(?: |$)/.test(call), useOnnx, call)
+        assert.ok(!call.includes('--force'), call)
+      }
+      assert.ok(!calls.some((call) => call.startsWith('config set ')))
+      for (const [file, expected] of [
+        [`${home}/.memsearch/config.toml`, configs.global],
+        [`${projectDir}/.memsearch.toml`, configs.project],
+      ]) {
+        if (expected === undefined) assert.equal(fs.existsSync(file), false)
+        else assert.equal(fs.readFileSync(file, 'utf-8'), expected)
+      }
+    }, false, '', configs)
+  })
 }
 
 test('detectDshCmd: prefers dsh on PATH as a plain argv', () => {

@@ -41,6 +41,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -345,6 +346,13 @@ function milvusUriFlag(milvusUri) {
   return milvusUri ? `--milvus-uri '${shellEscape(milvusUri)}' ` : ''
 }
 
+/** Select the local embedding default only for an unconfigured project. */
+function embeddingFlag(projectDir) {
+  return !existsSync(join(homedir(), '.memsearch', 'config.toml')) &&
+    !existsSync(join(projectDir, '.memsearch.toml'))
+    ? '--provider onnx ' : ''
+}
+
 /**
  * Run one bounded memsearch search over the project collection.
  * @returns parsed chunks plus an explicit error when the CLI call fails.
@@ -354,6 +362,7 @@ function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
     const command =
       `${memsearchCmd} search '${shellEscape(query)}' ` +
       `--top-k ${SEARCH_TOP_K} --json-output ` +
+      embeddingFlag(projectDir) +
       `${milvusUriFlag(milvusUri)}` +
       `--default-collection '${shellEscape(collection)}'`
     execFile(
@@ -383,6 +392,7 @@ function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvu
   if (!existsSync(memoryDir)) return
   const command =
     `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
+    embeddingFlag(projectDir) +
     `${milvusUriFlag(milvusUri)}` +
     `--default-collection '${shellEscape(collection)}'`
   // Detached + unref so the index survives the DSH process: a headless or

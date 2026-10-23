@@ -65,6 +65,10 @@ land in `<project>/.memsearch/memory/YYYY-MM-DD.md`.
 
 ## Configuration
 
+Embeddings run locally with ONNX when neither global nor project MemSearch
+configuration exists. Existing configuration is used as-is. Configure embedding
+and Milvus settings through `memsearch config` or the `memory-config` skill.
+
 The plugin is configured through the profile's `cordis.patch.yml` `config`
 block (patch the `memsearch` row you inserted). All keys are optional.
 
