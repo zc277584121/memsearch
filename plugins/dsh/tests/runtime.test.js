@@ -10,7 +10,7 @@ import { detectPythonCmd, execCommand, execCommandSync } from '../runtime.js'
 const plugin = process.env.MEMSEARCH_RUNTIME_ROOT
   ? pathToFileURL(join(process.env.MEMSEARCH_RUNTIME_ROOT, 'plugins/dsh/index.js')).href
   : new URL('../index.js', import.meta.url).href
-const { detectDshCmd, deriveCollection, summarizeTurn, writeCapture } = await import(plugin)
+const { detectDshCmd, detectMemsearchCmd, deriveCollection, summarizeTurn, writeCapture } = await import(plugin)
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'memsearch runtime '))
@@ -22,8 +22,44 @@ function fixture(t) {
   })
   delete process.env.MEMSEARCH_PYTHON
   delete process.env.DSH_CLI
+  delete process.env.MEMSEARCH_CMD
   return root
 }
+
+test('command discovery keeps existing home-directory fallbacks and explicit overrides', t => {
+  const root = fixture(t)
+  process.env.HOME = root
+  process.env.USERPROFILE = root
+  process.env.PATH = ''
+  const launcher = (directory, name) => {
+    mkdirSync(directory, { recursive: true })
+    const windows = process.platform === 'win32'
+    const file = join(directory, name + (windows ? '.cmd' : ''))
+    writeFileSync(file, windows ? '@exit /b 0\r\n' : '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+    return file
+  }
+  const dsh = launcher(join(root, '.local', 'share', 'pnpm'), 'dsh')
+  const uvx = launcher(join(root, '.local', 'bin'), 'uvx')
+  const uvxArgs = ['--from', 'memsearch[onnx]', 'memsearch']
+  assert.deepEqual(detectDshCmd(), [dsh])
+  assert.deepEqual(detectMemsearchCmd(), [uvx, ...uvxArgs])
+
+  const bin = join(root, 'path bin')
+  const pathDsh = launcher(bin, 'dsh')
+  const pathUvx = launcher(bin, 'uvx')
+  process.env.PATH = bin
+  assert.deepEqual(detectDshCmd(), [pathDsh])
+  assert.deepEqual(detectMemsearchCmd(), [uvx, ...uvxArgs])
+  rmSync(uvx)
+  assert.deepEqual(detectMemsearchCmd(), [pathUvx, ...uvxArgs])
+  const memsearch = launcher(bin, 'memsearch')
+  assert.deepEqual(detectMemsearchCmd(), [memsearch])
+
+  process.env.DSH_CLI = JSON.stringify([dsh, '--profile', 'custom'])
+  process.env.MEMSEARCH_CMD = JSON.stringify([join(root, 'explicit-memsearch')])
+  assert.deepEqual(detectDshCmd(), [dsh, '--profile', 'custom'])
+  assert.deepEqual(detectMemsearchCmd(), [join(root, 'explicit-memsearch')])
+})
 
 test('headless summary uses the explicitly quoted CLI and writes Unicode memory', async t => {
   const root = fixture(t)

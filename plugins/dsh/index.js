@@ -144,12 +144,12 @@ async function createMemoryMessage(ctx, text) {
   })
 }
 
-/** Resolve an installed CLI or the existing uvx route from the configured PATH. */
+/** Resolve an installed CLI or the existing uvx route. */
 function detectMemsearchCmd() {
   if (process.env.MEMSEARCH_CMD) return parseCommand(process.env.MEMSEARCH_CMD, 'MEMSEARCH_CMD')
   const executable = findExecutable('memsearch')
   if (executable) return [executable]
-  const uvx = findExecutable('uvx')
+  const uvx = findExecutable(join(homedir(), '.local', 'bin', 'uvx')) || findExecutable('uvx')
   return uvx ? [uvx, '--from', 'memsearch[onnx]', 'memsearch'] : ['memsearch']
 }
 
@@ -965,10 +965,10 @@ function summarizeCustomLlm(opts, render, projectDir) {
   })
 }
 
-/** Explicit user configuration wins; otherwise use the host's PATH. */
+/** Prefer explicit configuration, then PATH and the standard pnpm location. */
 function detectDshCmd() {
   if (process.env.DSH_CLI) return parseCommand(process.env.DSH_CLI, 'DSH_CLI')
-  const executable = findExecutable('dsh')
+  const executable = findExecutable('dsh') || findExecutable(join(homedir(), '.local', 'share', 'pnpm', 'dsh'))
   return executable ? [executable] : null
 }
 
@@ -1417,6 +1417,9 @@ export function apply(ctx, config = {}) {
 
 /** Detect the dsh CLI command used by `summarizeMode: dsh-headless`. */
 export { detectDshCmd }
+
+/** Detect the MemSearch CLI or uvx command used by plugin operations. */
+export { detectMemsearchCmd }
 
 /** One-shot DSH-headless summarizer (see README "dsh-headless" mode). */
 export { summarizeHeadless }

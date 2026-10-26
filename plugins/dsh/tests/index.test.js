@@ -444,7 +444,7 @@ test('summarizeTurn: custom-llm rejects an early stdin close', async () => {
   }
 })
 
-test('detectDshCmd: does not guess a pnpm installation outside PATH', async () => {
+test('detectDshCmd: falls back to the pnpm global bin directory', async () => {
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
@@ -459,7 +459,7 @@ test('detectDshCmd: does not guess a pnpm installation outside PATH', async () =
     delete process.env.PATH
     process.env.HOME = fakeHome
     const cmd = detectDshCmd()
-    assert.equal(cmd, null)
+    assert.deepEqual(cmd, [`${fakeHome}/.local/share/pnpm/dsh`])
   } finally {
     try { fs.rmSync(fakeHome, { recursive: true, force: true }) } catch { /* cleanup */ }
     if (prevCli === undefined) delete process.env.DSH_CLI

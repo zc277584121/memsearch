@@ -262,12 +262,16 @@ files and the Milvus index are left untouched.
 
 ### Command setup
 
-The plugin uses explicit command settings first, then the profile's `PATH`.
+The plugin uses explicit command settings first.
 `DSH_CLI` selects the headless DSH entry, `MEMSEARCH_CMD` selects MemSearch,
 and `MEMSEARCH_PYTHON` selects the Python interpreter for helper scripts.
 Use an executable path, a quoted command with arguments, or a JSON argument
 array; a path containing spaces must remain one argument. An invalid explicit
 setting is reported rather than replaced with another installation.
+
+Without an explicit setting, DSH is resolved from `PATH`, then
+`~/.local/share/pnpm/dsh`. MemSearch uses `memsearch` on `PATH`, then
+`~/.local/bin/uvx`, then `uvx` on `PATH`.
 
 A missing DSH or Python command produces a dependency warning. Enable Desktop's
 CLI entry or configure the required command, then restart the profile. A command
