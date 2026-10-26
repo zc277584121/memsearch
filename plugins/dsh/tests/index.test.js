@@ -1179,6 +1179,7 @@ test('registerSkillReviewRoutes: GET candidates returns parsed list, pending fir
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
   const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
     agents: { get: () => undefined },
     logger: { warn: () => {} },
   }
@@ -1210,6 +1211,7 @@ test('registerSkillReviewRoutes: GET rejects non-GET, POST review injects into a
     inbox: { append: (target, msg) => { appended = { target, msg } } },
   }
   const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
     agents: { get: (id) => (id === 'sess-1' ? fakeAgent : undefined) },
     logger: { warn: () => {} },
   }
@@ -1246,7 +1248,11 @@ test('registerSkillReviewRoutes: POST review with unknown session returns 404', 
   const tmp = fs.mkdtempSync(os.tmpdir() + '/msr-route3-')
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
-  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+  }
   const { registerSkillReviewRoutes } = await import('../index.js')
   const prev = process.env.MEMSEARCH_DIR
   process.env.MEMSEARCH_DIR = tmp
@@ -1274,6 +1280,7 @@ test('registerSkillReviewRoutes: POST open-memsearch opens existing dir, 404 for
   const webServer = { register: (r) => { routes[r.path] = r } }
   let opened = null
   const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
     agents: { get: () => undefined },
     logger: { warn: (m) => { opened = m } },
   }
@@ -1326,7 +1333,11 @@ test('registerSkillReviewRoutes: list-memsearch lists dirs/files, blocks travers
   fs.symlinkSync(outside, `${tmp}/outside-link`)
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
-  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+  }
   const { registerSkillReviewRoutes } = await import('../index.js')
   const prev = process.env.MEMSEARCH_DIR
   process.env.MEMSEARCH_DIR = tmp
@@ -1368,7 +1379,11 @@ test('registerSkillReviewRoutes: read-file serves text, rejects binary/traversal
   fs.symlinkSync(outside, `${tmp}/escape.md`)
   const routes = {}
   const webServer = { register: (r) => { routes[r.path] = r } }
-  const ctx = { agents: { get: () => undefined }, logger: { warn: () => {} } }
+  const ctx = {
+    get: () => ({ requestRejection: () => undefined }),
+    agents: { get: () => undefined },
+    logger: { warn: () => {} },
+  }
   const { registerSkillReviewRoutes } = await import('../index.js')
   const prev = process.env.MEMSEARCH_DIR
   process.env.MEMSEARCH_DIR = tmp

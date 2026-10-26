@@ -542,6 +542,28 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
     res.end(JSON.stringify(payload))
   }
+  const registerAuthenticatedRoute = (route) => webServer.register({
+    ...route,
+    handler: (req, res) => {
+      let rejection
+      try {
+        // The connection service mounts after this plugin. Resolve it for each
+        // request and reuse DSH's authentication and Host/Origin policy.
+        const connection = ctx.get('connection')
+        rejection = typeof connection?.requestRejection === 'function'
+          ? connection.requestRejection({ headers: req.headers })
+          : 503
+      } catch {
+        rejection = 503
+      }
+      if (rejection !== undefined) {
+        return sendJson(res, rejection, {
+          error: rejection === 503 ? 'authentication unavailable' : 'request rejected',
+        })
+      }
+      return route.handler(req, res)
+    },
+  })
   // Project dir for a session id (its durable cwd), else the process cwd.
   // A long-lived web surface serves many projects, so we never assume the
   // boot dir is the only one (mirrors the capture path).
@@ -550,7 +572,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
     return projectDirFor(agent?.session)
   }
 
-  webServer.register({
+  registerAuthenticatedRoute({
     kind: 'exact',
     path: '/memsearch-dsh/skill-candidates',
     handler: (req, res) => {
@@ -562,7 +584,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
     },
   })
 
-  webServer.register({
+  registerAuthenticatedRoute({
     kind: 'exact',
     path: '/memsearch-dsh/skill-review',
     handler: async (req, res) => {
@@ -610,7 +632,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
     },
   })
 
-  webServer.register({
+  registerAuthenticatedRoute({
     kind: 'exact',
     path: '/memsearch-dsh/open-memsearch',
     handler: async (req, res) => {
@@ -638,7 +660,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
     },
   })
 
-  webServer.register({
+  registerAuthenticatedRoute({
     kind: 'exact',
     path: '/memsearch-dsh/list-memsearch',
     handler: async (req, res) => {
@@ -679,7 +701,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
     },
   })
 
-  webServer.register({
+  registerAuthenticatedRoute({
     kind: 'exact',
     path: '/memsearch-dsh/read-file',
     handler: async (req, res) => {
