@@ -1,0 +1,57 @@
+name: DSH Windows runtime
+
+on:
+  pull_request:
+    paths:
+      - 'plugins/dsh/**'
+      - 'plugins/_shared/scripts/maintenance-runner.py'
+      - '.github/workflows/dsh-windows.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/dsh/**'
+      - 'plugins/_shared/scripts/maintenance-runner.py'
+      - '.github/workflows/dsh-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - name: Checkout baseline for initial reproduction
+        uses: actions/checkout@v6
+        with:
+          ref: ed124cc37d4c40d17768fb52a824654a1cd34a9f
+          path: baseline
+          sparse-checkout: |
+            plugins/dsh/scripts
+            plugins/_shared/scripts
+      - name: Reproduce baseline failures
+        run: |
+          $env:MEMSEARCH_RUNTIME_ROOT = "$env:GITHUB_WORKSPACE/baseline"
+          uv run --no-project --with pytest python -m pytest plugins/dsh/tests/test_runtime.py -q --junitxml=baseline-results.xml
+          $testExit = $LASTEXITCODE
+          Remove-Item Env:MEMSEARCH_RUNTIME_ROOT
+          [xml]$report = Get-Content baseline-results.xml
+          if ($testExit -ne 1 -or $report.testsuites.testsuite.failures -ne '4' -or $report.testsuites.testsuite.errors -ne '0') {
+            throw 'Expected four reproduced baseline failures'
+          }
+          exit 0
+      - name: Install plugin runtime dependencies
+        run: npm install --prefix plugins/dsh --omit=peer --ignore-scripts --package-lock=false
+      - name: Check native command launching
+        run: node --test plugins/dsh/tests/runtime.test.js
+      - name: Check Python encoding and process handoff
+        run: uv run --no-project --with pytest python -m pytest plugins/dsh/tests/test_runtime.py -q

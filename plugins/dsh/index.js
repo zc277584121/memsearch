@@ -29,7 +29,9 @@
  * @module memsearch-dsh
  */
 
-import { execFile, execFileSync, spawn } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { commandForSkill, detectPythonCmd, execCommand, execCommandSync, findExecutable, parseCommand, spawnCommand } from './runtime.js'
 import {
   appendFileSync,
   existsSync,
@@ -69,11 +71,6 @@ const MAINTENANCE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h; runner's due-state gat
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Shell-escape a string for safe use inside single quotes. */
-function shellEscape(s) {
-  return String(s).replace(/'/g, "'\\''")
-}
 
 let dshLlmModule = null
 
@@ -147,58 +144,44 @@ async function createMemoryMessage(ctx, text) {
   })
 }
 
-/**
- * Detect the memsearch CLI command: installed binary on PATH first, then the
- * uvx fallback, then a bare `memsearch` best effort.
- *
- * `command -v` is resolved through bash so the check sees the same PATH the
- * later `bash -c` invocations use; calling `which` as a direct executable
- * bypasses shell built-ins and can miss the installed tool.
- */
+/** Resolve an installed CLI or the existing uvx route from the configured PATH. */
 function detectMemsearchCmd() {
-  const home = process.env.HOME || ''
-  const onPath = (cmd) => {
-    try {
-      execFileSync('bash', ['-c', `command -v ${cmd} >/dev/null 2>&1`], { stdio: 'pipe' })
-      return true
-    } catch {
-      return false
-    }
-  }
-  if (onPath('memsearch')) return 'memsearch'
-  const uvxPath = join(home, '.local', 'bin', 'uvx')
-  const uvxBin = existsSync(uvxPath) ? uvxPath : (onPath('uvx') ? 'uvx' : '')
-  if (uvxBin) {
-    return `${uvxBin} --from 'memsearch[onnx]' memsearch`
-  }
-  return 'memsearch'
+  if (process.env.MEMSEARCH_CMD) return parseCommand(process.env.MEMSEARCH_CMD, 'MEMSEARCH_CMD')
+  const executable = findExecutable('memsearch')
+  if (executable) return [executable]
+  const uvx = findExecutable('uvx')
+  return uvx ? [uvx, '--from', 'memsearch[onnx]', 'memsearch'] : ['memsearch']
 }
 
-/** Derive the per-project Milvus collection name via the shared script. */
+/** Preserve derive-collection.sh's physical path and collection naming. */
 function deriveCollection(projectDir, override) {
   if (override) return override
-  const script = join(PLUGIN_DIR, 'scripts', 'derive-collection.sh')
-  try {
-    const result = execFileSync('bash', [script, projectDir], {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return result.trim() || undefined
-  } catch {
-    return undefined
+  let absolute = resolve(projectDir)
+  let existing = absolute
+  const suffix = []
+  while (true) {
+    try {
+      absolute = join(realpathSync(existing), ...suffix)
+      break
+    } catch {
+      const parent = dirname(existing)
+      if (parent === existing) break
+      suffix.unshift(basename(existing))
+      existing = parent
+    }
   }
+  const sanitized = basename(absolute)
+    .replace(/[A-Z]/g, letter => letter.toLowerCase())
+    .replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
+  const hash = createHash('sha256').update(absolute).digest('hex').slice(0, 8)
+  return `ms_${sanitized}_${hash}`
 }
 
 function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
   try {
-    execFileSync(
-      'bash',
-      [
-        '-c',
-        `${memsearchCmd} config get milvus.collection ` +
-          `--default-collection '${shellEscape(collection)}'`,
-      ],
+    execCommandSync(
+      memsearchCmd,
+      ['config', 'get', 'milvus.collection', '--default-collection', collection],
       {
         cwd: projectDir,
         encoding: 'utf-8',
@@ -206,7 +189,10 @@ function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
-  } catch {
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw dependencyError('MemSearch CLI not found; install memsearch on PATH or set MEMSEARCH_CMD to its executable path')
+    }
     throw new Error(
       'Installed memsearch CLI is incompatible with this plugin; ' +
         '--default-collection support is required. Upgrade memsearch core and the plugin together.',
@@ -231,9 +217,7 @@ function requireDefaultCollectionSupport(memsearchCmd, projectDir, collection) {
  */
 function readMemsearchConfigValue(memsearchCmd, key) {
   try {
-    // memsearchCmd may be a full command line (e.g. `uvx --from 'memsearch[onnx]' memsearch`),
-    // so route through bash rather than execFileSync's single executable.
-    const result = execFileSync('bash', ['-c', `${memsearchCmd} config get '${key}'`], {
+    const result = execCommandSync(memsearchCmd, ['config', 'get', key], {
       encoding: 'utf-8',
       timeout: 5000,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -343,14 +327,14 @@ function hhmmStr() {
  * profile; empty otherwise (memsearch falls back to its own config).
  */
 function milvusUriFlag(milvusUri) {
-  return milvusUri ? `--milvus-uri '${shellEscape(milvusUri)}' ` : ''
+  return milvusUri ? ['--milvus-uri', milvusUri] : []
 }
 
 /** Select the local embedding default only for an unconfigured project. */
 function embeddingFlag(projectDir) {
   return !existsSync(join(homedir(), '.memsearch', 'config.toml')) &&
     !existsSync(join(projectDir, '.memsearch.toml'))
-    ? '--provider onnx ' : ''
+    ? ['--provider', 'onnx'] : []
 }
 
 /**
@@ -359,15 +343,10 @@ function embeddingFlag(projectDir) {
  */
 function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
   return new Promise((resolve) => {
-    const command =
-      `${memsearchCmd} search '${shellEscape(query)}' ` +
-      `--top-k ${SEARCH_TOP_K} --json-output ` +
-      embeddingFlag(projectDir) +
-      `${milvusUriFlag(milvusUri)}` +
-      `--default-collection '${shellEscape(collection)}'`
-    execFile(
-      'bash',
-      ['-c', command],
+    execCommand(
+      memsearchCmd,
+      ['search', query, '--top-k', String(SEARCH_TOP_K), '--json-output',
+        ...embeddingFlag(projectDir), ...milvusUriFlag(milvusUri), '--default-collection', collection],
       { cwd: projectDir, timeout: SEARCH_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
@@ -390,15 +369,9 @@ function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
 /** Fire-and-forget `memsearch index` refresh for a project. */
 function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvusUri) {
   if (!existsSync(memoryDir)) return
-  const command =
-    `${memsearchCmd} index '${shellEscape(memoryDir)}' ` +
-    embeddingFlag(projectDir) +
-    `${milvusUriFlag(milvusUri)}` +
-    `--default-collection '${shellEscape(collection)}'`
-  // Detached + unref so the index survives the DSH process: a headless or
-  // one-shot session can exit right after the turn that wrote the memory, and
-  // an ordinary child would be torn down with the parent before indexing.
-  const child = execFile('bash', ['-c', command], {
+  // Detached indexing survives a headless session that exits after capture.
+  const child = execCommand(memsearchCmd,
+    ['index', memoryDir, ...embeddingFlag(projectDir), ...milvusUriFlag(milvusUri), '--default-collection', collection], {
     cwd: projectDir,
     timeout: 120000,
     maxBuffer: 4 * 1024 * 1024,
@@ -423,12 +396,10 @@ function indexMemory(ctx, memsearchCmd, memoryDir, collection, projectDir, milvu
 function runMaintenance(ctx, projectDir, memsearchDir) {
   const runner = join(PLUGIN_DIR, 'scripts', 'maintenance-runner.py')
   if (!existsSync(runner)) return
-  const command =
-    `MEMSEARCH_NO_WATCH=1 python3 '${shellEscape(runner)}' ` +
-    `--platform dsh ` +
-    `--project-dir '${shellEscape(projectDir)}' ` +
-    `--memsearch-dir '${shellEscape(memsearchDir)}'`
-  const child = execFile('bash', ['-c', command], {
+  const python = detectPythonCmd()
+  if (!python) return
+  const child = execCommand(python,
+    [runner, '--platform', 'dsh', '--project-dir', projectDir, '--memsearch-dir', memsearchDir], {
     cwd: projectDir,
     timeout: 180000,
     maxBuffer: 4 * 1024 * 1024,
@@ -625,10 +596,7 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       // skill-filesystem watcher picks up the new SKILL.md automatically.
       const projectDir = projectDirForSession(sessionId)
       const target = resolveSkillInstallTarget(memsearchCmd, projectDir)
-      const command =
-        `${memsearchCmd} skills install '${shellEscape(name)}' ` +
-        `--path '${shellEscape(target)}'`
-      const child = execFile('bash', ['-c', command], {
+      const child = execCommand(memsearchCmd, ['skills', 'install', name, '--path', target], {
         cwd: projectDir,
         timeout: 60000,
         maxBuffer: 4 * 1024 * 1024,
@@ -1001,7 +969,9 @@ function summarizeCustomLlm(opts, render, projectDir) {
   ]
   if (opts.summarizeProvider) args.push('--provider', opts.summarizeProvider)
   if (opts.summarizeModel) args.push('--model', opts.summarizeModel)
-  const child = spawn('python3', args, {
+  const python = detectPythonCmd()
+  if (!python) return Promise.reject(dependencyError('Python 3 not found; install Python 3 on PATH or set MEMSEARCH_PYTHON to its executable path'))
+  const child = spawnCommand(python, args, {
     cwd: projectDir,
     detached: process.platform !== 'win32',
   })
@@ -1013,32 +983,17 @@ function summarizeCustomLlm(opts, render, projectDir) {
   })
 }
 
-/**
- * Resolve the dsh CLI command for one-shot headless summarization.
- *
- * `dsh` may not be on PATH (it is a pnpm-installed workspace bin). We check
- * PATH first, then `DSH_CLI` as an explicit override, then the pnpm global
- * bin directory. Returns the command as an argv array (`[cmd, ...args]`),
- * or null when not found. The array form is required because `DSH_CLI` may
- * be an interpreter invocation (e.g. `node /path/to/bin.js`), which `spawn`
- * cannot treat as a single executable.
- */
+/** Explicit user configuration wins; otherwise use the host's PATH. */
 function detectDshCmd() {
-  const onPath = (cmd) => {
-    try {
-      execFileSync('bash', ['-c', `command -v ${cmd} >/dev/null 2>&1`], { stdio: 'pipe' })
-      return true
-    } catch {
-      return false
-    }
-  }
-  if (onPath('dsh')) return ['dsh']
-  const fromEnv = process.env.DSH_CLI
-  if (fromEnv) return fromEnv.split(/\s+/).filter(Boolean)
-  const home = process.env.HOME || ''
-  const pnpmBin = join(home, '.local', 'share', 'pnpm')
-  if (existsSync(join(pnpmBin, 'dsh'))) return [join(pnpmBin, 'dsh')]
-  return null
+  if (process.env.DSH_CLI) return parseCommand(process.env.DSH_CLI, 'DSH_CLI')
+  const executable = findExecutable('dsh')
+  return executable ? [executable] : null
+}
+
+function dependencyError(message) {
+  const error = new Error(message)
+  error.code = 'MEMSEARCH_DEPENDENCY_MISSING'
+  return error
 }
 
 /**
@@ -1066,7 +1021,7 @@ function detectDshCmd() {
 function summarizeHeadless(ctx, opts, render, projectDir) {
   const dshCmd = detectDshCmd()
   if (!dshCmd) {
-    return Promise.reject(new Error('dsh CLI not found; set DSH_CLI or install dsh on PATH for summarizeMode=dsh-headless'))
+    return Promise.reject(dependencyError('dsh CLI not found; enable the Desktop Manage dsh Command entry or set DSH_CLI for summarizeMode=dsh-headless'))
   }
   try {
     const promptFile = join(PLUGIN_DIR, 'prompts', 'summarize.txt')
@@ -1080,7 +1035,7 @@ function summarizeHeadless(ctx, opts, render, projectDir) {
 
     const args = ['--profile', 'headless', task]
 
-    const child = spawn(dshCmd[0], [...dshCmd.slice(1), ...args], {
+    const child = spawnCommand(dshCmd, args, {
       cwd: projectDir,
       env: { ...process.env, MEMSEARCH_DSH_SUMMARIZE: '1' },
       detached: process.platform !== 'win32',
@@ -1144,10 +1099,12 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     .replace(/^﻿?---[\s\S]*?---\s*/u, '') // strip optional YAML frontmatter
     .replace(/^<!--[\s\S]*?-->\s*/u, '') // strip the human-facing metadata comment
     .replaceAll('{{AGENT_NAME}}', agentName)
-    .replaceAll('{{MEMSEARCH_CMD}}', memsearchCmd)
+    .replaceAll('{{MEMSEARCH_CMD}}', commandForSkill(memsearchCmd))
+    .replaceAll('{{PYTHON_CMD}}', commandForSkill(detectPythonCmd() || ['python3']))
+    .replaceAll('{{EMBEDDING_FLAG}}', embeddingFlag(projectDir).join(' '))
     .replaceAll('{{PLUGIN_DIR}}', PLUGIN_DIR)
     .replaceAll('{{PROJECT_DIR}}', projectDir)
-    .replaceAll('{{COLLECTION}}', collection || `$(bash "${PLUGIN_DIR}/scripts/derive-collection.sh")`)
+    .replaceAll('{{COLLECTION}}', collection || deriveCollection(projectDir))
     .replaceAll('{{MILVUS_FLAG}}', opts.milvusUri ? `--milvus-uri "${opts.milvusUri}" ` : '')
   ctx.skills.register({
     name: 'memory-recall',
@@ -1353,6 +1310,7 @@ export function apply(ctx, config = {}) {
   // necessarily `process.cwd()` — the boot directory. Turns are serialized
   // through a promise chain so LLM summarize calls never overlap, and the
   // `captureExists` dedup keeps a turn idempotent if its event replays.
+  const dependencyWarnings = new Set()
   let captureChain = Promise.resolve()
   const enqueueCapture = (work) => {
     captureChain = captureChain
@@ -1384,7 +1342,10 @@ export function apply(ctx, config = {}) {
         // Collapse newlines so the reason stays a single `- ` bullet in the
         // daily file (summarize.py stderr can span lines).
         const reason = String(error.message).replace(/\s+/g, ' ').trim()
-        ctx.logger.warn(`[memsearch] summarization failed (${reason}); wrote unavailable note`)
+        if (error.code !== 'MEMSEARCH_DEPENDENCY_MISSING' || !dependencyWarnings.has(reason)) {
+          ctx.logger.warn(`[memsearch] summarization failed (${reason}); wrote unavailable note`)
+          if (error.code === 'MEMSEARCH_DEPENDENCY_MISSING') dependencyWarnings.add(reason)
+        }
         body = `- Memory summary unavailable: ${reason}; transcript content was omitted. Use the transcript anchor for progressive disclosure.`
       }
     }
@@ -1512,3 +1473,5 @@ export { registerSkillReviewRoutes }
 
 /** Resolve the distilled-skill install target (paths config, else ~/.agents/skills). */
 export { resolveSkillInstallTarget }
+
+export { deriveCollection }

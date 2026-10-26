@@ -22,6 +22,7 @@ review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list
 
 - A DSH profile (web / headless / tui) you want to attach memory to.
 - Node >= 22.19 (DSH's requirement).
+- Python 3 on the profile's `PATH` (`python3`, `python`, or the Windows `py -3` launcher).
 
 ## Install
 
@@ -34,6 +35,7 @@ dsh plugin --profile web add @zilliz/memsearch-dsh
 ### From source (development)
 
 ```bash
+npm install --prefix /path/to/memsearch/plugins/dsh --omit=peer
 dsh plugin --profile web add /path/to/memsearch/plugins/dsh
 ```
 
@@ -147,7 +149,10 @@ a direct LLM call; configure nothing and you get a headless agent.
   the Web UI model picker) instead. The boot is asynchronous and fire-and-forget,
   so the few seconds of headless startup never block the conversation. Requires
   `dsh` on PATH or `DSH_CLI` set to the CLI
-  entry. The sub-agent is booted with `MEMSEARCH_DSH_SUMMARIZE=1`; the plugin
+  entry. Desktop users can enable **Manage dsh Command… → Install** in the
+  application menu; the Windows `dsh.cmd` launcher uses Desktop's bundled
+  runtime. Restart DSH after changing its command environment.
+  The sub-agent is booted with `MEMSEARCH_DSH_SUMMARIZE=1`; the plugin
   checks that flag and stays inert (no capture / inject / skill) inside the
   summarizer, so the summarizer's own session is never re-captured in a loop.
 - **`custom-llm`** — `scripts/summarize.py` imports memsearch's
@@ -254,3 +259,19 @@ files and the Milvus index are left untouched.
   plugins; see the OpenCode journal writer in
   [`scripts/capture.py`](../opencode/scripts/capture.py) for the shared
   heading and transcript-anchor format.
+
+### Command setup
+
+The plugin uses explicit command settings first, then the profile's `PATH`.
+`DSH_CLI` selects the headless DSH entry, `MEMSEARCH_CMD` selects MemSearch,
+and `MEMSEARCH_PYTHON` selects the Python interpreter for helper scripts.
+Use an executable path, a quoted command with arguments, or a JSON argument
+array; a path containing spaces must remain one argument. An invalid explicit
+setting is reported rather than replaced with another installation.
+
+A missing DSH or Python command produces a dependency warning. Enable Desktop's
+CLI entry or configure the required command, then restart the profile. A command
+that starts but fails reports its execution error; check that command's profile,
+provider, and model configuration. The plugin does not change these settings or
+switch summary backends automatically. The Markdown journal retains the existing
+unavailable note and transcript anchor when summarization fails.

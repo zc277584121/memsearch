@@ -154,7 +154,7 @@ for (const [name, configs, useOnnx] of [
 }
 
 test('detectDshCmd: prefers dsh on PATH as a plain argv', () => {
-  // DSH_CLI is checked after PATH; simulate PATH hit by masking DSH_CLI.
+  // Exercise PATH lookup without an explicit override.
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   try {
@@ -199,28 +199,14 @@ test('detectDshCmd: DSH_CLI with trailing spaces is trimmed', () => {
   }
 })
 
-test('summarizeTurn: explicit custom-llm mode dispatches to the LLM path', async () => {
-  // custom-llm mode spawns python3 summarize.py; without a real transcript we
-  // only assert it picks that branch (no crash before spawn).
-  const opts = { summarizeMode: 'custom-llm', agentName: 'X', summarizeProvider: '', summarizeModel: '' }
-  const ctx = { logger: { warn: () => {} } }
-  const render = '=== Turn 1 ===\n\n[User]: hi\n\n[Assistant]: hello'
-  // If dispatch is wrong (e.g. treats anything not dsh-headless as dsh), this
-  // would reject with a dsh-CLI error instead of the custom-llm path error.
+test('summarizeTurn: explicit custom-llm mode reports its missing dependency', async () => {
+  const previous = process.env.MEMSEARCH_PYTHON
   try {
-    await summarizeTurn(ctx, opts, render, process.cwd())
-    assert.fail('expected custom-llm summarizer to fail (no provider configured)')
-  } catch (error) {
-    // custom-llm path failure: summarize.py exits non-zero or times out, or
-    // python3 is missing — never a "dsh CLI not found" error.
-    assert.ok(
-      !/dsh CLI not found/.test(error.message),
-      `unexpected dsh CLI error: ${error.message}`,
-    )
-    assert.ok(
-      !/spawn .* ENOENT/.test(error.message),
-      `unexpected spawn ENOENT: ${error.message}`,
-    )
+    process.env.MEMSEARCH_PYTHON = '/definitely/not/a/python'
+    await assert.rejects(summarizeTurn({}, { summarizeMode: 'custom-llm' }, 'hello', process.cwd()), /Python 3 not found/)
+  } finally {
+    if (previous === undefined) delete process.env.MEMSEARCH_PYTHON
+    else process.env.MEMSEARCH_PYTHON = previous
   }
 })
 
@@ -389,7 +375,7 @@ test('summarizeTurn: custom-llm surfaces summarize.py stderr as a visible error'
   fs.mkdirSync(fakeBin, { recursive: true })
   fs.writeFileSync(
     `${fakeBin}/python3`,
-    '#!/bin/sh\necho "provider deepseek-zilliz not found in config" >&2\ncat > /dev/null\nexit 3\n',
+    '#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\necho "provider deepseek-zilliz not found in config" >&2\ncat > /dev/null\nexit 3\n',
     'utf-8',
   )
   fs.chmodSync(`${fakeBin}/python3`, 0o755)
@@ -469,7 +455,7 @@ test('summarizeTurn: custom-llm rejects an early stdin close', async () => {
   }
 })
 
-test('detectDshCmd: falls back to pnpm global bin directory', async () => {
+test('detectDshCmd: does not guess a pnpm installation outside PATH', async () => {
   const prevCli = process.env.DSH_CLI
   const prevPath = process.env.PATH
   const prevHome = process.env.HOME
@@ -484,7 +470,7 @@ test('detectDshCmd: falls back to pnpm global bin directory', async () => {
     delete process.env.PATH
     process.env.HOME = fakeHome
     const cmd = detectDshCmd()
-    assert.deepEqual(cmd, [`${fakeHome}/.local/share/pnpm/dsh`])
+    assert.equal(cmd, null)
   } finally {
     try { fs.rmSync(fakeHome, { recursive: true, force: true }) } catch { /* cleanup */ }
     if (prevCli === undefined) delete process.env.DSH_CLI
