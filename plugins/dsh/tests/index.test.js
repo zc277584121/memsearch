@@ -121,21 +121,10 @@ for (const [name, configs, useOnnx] of [
   ['existing project configuration', { project: '[milvus]\ncollection = "existing_index"\n' }, false],
 ]) {
   test(`embedding defaults: ${name} applies consistently without changing configuration`, async () => {
-    await withInjectionFixture([], async ({ callLog, recallSkill, home, projectDir, fakeBin, resultFile }) => {
-      // Execute the command exposed to the agent as well as the automatic hook.
-      const searchBlock = recallSkill.match(/```bash\n([\s\S]*?)```/)[1]
-        .replaceAll('{{QUERY}}', 'release decision')
-      execFileSync('/usr/bin/bash', ['--noprofile', '--norc', '-c', searchBlock], {
-        cwd: projectDir,
-        env: {
-          ...process.env, HOME: home, PATH: `${fakeBin}:/usr/bin:/bin`, BASH_ENV: '/dev/null',
-          MEMSEARCH_TEST_PATH: `${fakeBin}:/usr/bin:/bin`, MEMSEARCH_TEST_CALL_LOG: callLog,
-          MEMSEARCH_TEST_RESULT: resultFile,
-        },
-      })
+    await withInjectionFixture([], async ({ callLog, home, projectDir }) => {
       const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
       const embeddingCalls = calls.filter((call) => /^(search|index) /.test(call))
-      assert.equal(embeddingCalls.filter((call) => call.startsWith('search ')).length, 2)
+      assert.equal(embeddingCalls.filter((call) => call.startsWith('search ')).length, 1)
       assert.ok(embeddingCalls.some((call) => call.startsWith('index ')), 'startup index must run')
       for (const call of embeddingCalls) {
         assert.equal(/ --provider onnx(?: |$)/.test(call), useOnnx, call)

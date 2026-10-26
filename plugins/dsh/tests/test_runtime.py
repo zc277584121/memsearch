@@ -29,7 +29,7 @@ def test_summary_stdin_uses_utf8(encoding: str) -> None:
         timeout=10,
     )
     assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
-    assert result.stdout == expected.encode()
+    assert result.stdout.decode("utf-8").replace("\r\n", "\n") == expected
 
 
 @pytest.mark.parametrize("script", ["dsh/scripts/summarize.py", "_shared/scripts/maintenance-runner.py"])

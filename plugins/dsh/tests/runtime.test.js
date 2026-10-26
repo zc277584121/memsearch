@@ -76,8 +76,8 @@ test('Python discovery rejects an unusable alias and respects an explicit overri
 
 test('collection derivation preserves Linux names including symlinked missing paths', { skip: process.platform !== 'linux' }, t => {
   const root = fixture(t)
-  const target = join(root, 'Actual Project')
-  mkdirSync(target)
+  const target = join(root, 'physical', 'Actual Project')
+  mkdirSync(target, { recursive: true })
   symlinkSync(target, join(root, 'link'))
   for (const directory of [target, join(root, 'link'), `${root}/link/..`, `${root}/link/../missing`, join(root, 'link', 'not-created'), join(root, '中文 Project')]) {
     const expected = execFileSync('bash', [new URL('../scripts/derive-collection.sh', import.meta.url).pathname, directory], { encoding: 'utf8' }).trim()
