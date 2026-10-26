@@ -35,7 +35,8 @@ Use a local checkout when developing the plugin:
 
 ```bash
 git clone https://github.com/zilliztech/memsearch.git
-npm install --prefix memsearch/plugins/dsh --omit=peer
+cd memsearch/plugins/dsh
+npm install --omit=peer
 dsh plugin --profile web add /absolute/path/to/memsearch/plugins/dsh
 ```
 

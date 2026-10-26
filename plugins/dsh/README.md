@@ -35,7 +35,8 @@ dsh plugin --profile web add @zilliz/memsearch-dsh
 ### From source (development)
 
 ```bash
-npm install --prefix /path/to/memsearch/plugins/dsh --omit=peer
+cd /path/to/memsearch/plugins/dsh
+npm install --omit=peer
 dsh plugin --profile web add /path/to/memsearch/plugins/dsh
 ```
 
