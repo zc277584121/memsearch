@@ -20,10 +20,12 @@ Use this skill when the user's question could benefit from historical context: t
 Run a semantic search over the project's memsearch collection. The collection is derived from the project directory; the plugin normally injects the resolved value as `{{COLLECTION}}`:
 
 ```bash
-{{MEMSEARCH_CMD}} search "{{QUERY}}" {{EMBEDDING_FLAG}} --top-k 5 --json-output {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
+{{MEMSEARCH_CMD}} search "{{QUERY}}" --top-k 5 --json-output {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
 ```
 
-The command uses the local embedding default when the project has no embedding configuration.
+Before each search, check whether `~/.memsearch/config.toml` or the project's
+`.memsearch.toml` exists. If neither exists, add `--provider onnx` to the command.
+Otherwise, leave the provider unset so the existing configuration applies.
 
 Replace `{{QUERY}}` with a concise natural-language summary of what the user needs. The `--json-output` results contain `content`, `source`, `heading`, `score`, and `chunk_hash`.
 

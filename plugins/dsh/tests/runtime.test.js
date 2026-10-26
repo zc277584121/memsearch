@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync, symlinkSyn
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { detectPythonCmd, execCommandSync } from '../runtime.js'
+import { detectPythonCmd, execCommand, execCommandSync } from '../runtime.js'
 
 const plugin = process.env.MEMSEARCH_RUNTIME_ROOT
   ? pathToFileURL(join(process.env.MEMSEARCH_RUNTIME_ROOT, 'plugins/dsh/index.js')).href
@@ -28,7 +28,7 @@ function fixture(t) {
 test('headless summary uses the explicitly quoted CLI and writes Unicode memory', async t => {
   const root = fixture(t)
   const recorder = join(root, 'summary fixture.mjs')
-  writeFileSync(recorder, "process.stdout.write('- 会议决定：周五发布 😀')")
+  writeFileSync(recorder, "process.stdin.resume(); process.stdin.on('end', () => process.stdout.write('- 会议决定：周五发布 😀'))")
   process.env.DSH_CLI = `"${process.execPath}" "${recorder}"`
   const summary = await summarizeTurn({}, { summarizeMode: 'dsh-headless', agentName: 'Test' }, '中文对话', root)
   assert.equal(summary, '- 会议决定：周五发布 😀')
@@ -42,19 +42,18 @@ test('Windows Desktop cmd launcher preserves arguments and explicit selection', 
   const root = fixture(t)
   const recorder = join(root, 'record argv.mjs')
   const output = join(root, 'argv.json')
-  writeFileSync(recorder, "import fs from 'node:fs'; fs.writeFileSync(process.env.DSH_TEST_ARGV, JSON.stringify(process.argv.slice(2))); process.stdout.write('- Fixed summary')")
+  writeFileSync(recorder, "import fs from 'node:fs'; let input=''; process.stdin.setEncoding('utf8'); process.stdin.on('data', part => input+=part); process.stdin.on('end', () => { fs.writeFileSync(process.env.DSH_TEST_ARGV, JSON.stringify({argv:process.argv.slice(2),input})); process.stdout.write('- Fixed summary') })")
   const launcher = join(root, 'dsh.cmd')
   writeFileSync(launcher, `@echo off\r\nsetlocal DisableDelayedExpansion\r\n"${process.execPath}" "${recorder}" %*\r\nexit /b %errorlevel%\r\n`)
   process.env.DSH_TEST_ARGV = output
   process.env.PATH = `${root}${delimiter}${process.env.PATH}`
   assert.deepEqual(detectDshCmd(), [launcher])
   process.env.DSH_CLI = `"${launcher}"`
-  const transcript = '中文 "quoted" & echo SHOULD_NOT_RUN | %PATH% !literal! ^caret^ (group)\nnext line'
+  const transcript = 'word '.repeat(1180) + '中文 "quoted" & echo SHOULD_NOT_RUN | %PATH% !literal! ^caret^ (group)\nnext line'
   assert.equal(await summarizeTurn({}, { summarizeMode: 'dsh-headless', agentName: 'Test' }, transcript, root), '- Fixed summary')
-  const argv = JSON.parse(readFileSync(output, 'utf8'))
-  assert.deepEqual(argv.slice(0, 2), ['--profile', 'headless'])
-  assert.equal(argv.length, 3)
-  assert.ok(argv[2].endsWith(`Transcript:\n${transcript}`), JSON.stringify(argv))
+  const result = JSON.parse(readFileSync(output, 'utf8'))
+  assert.deepEqual(result.argv, ['--profile', 'headless'])
+  assert.ok(result.input.endsWith(`Transcript:\n${transcript}`), JSON.stringify(result))
 })
 
 test('Python discovery rejects an unusable alias and respects an explicit override', t => {
@@ -80,8 +79,25 @@ test('collection derivation preserves Linux names including symlinked missing pa
   const target = join(root, 'Actual Project')
   mkdirSync(target)
   symlinkSync(target, join(root, 'link'))
-  for (const directory of [target, join(root, 'link'), join(root, 'link', 'not-created'), join(root, '中文 Project')]) {
+  for (const directory of [target, join(root, 'link'), `${root}/link/..`, `${root}/link/../missing`, join(root, 'link', 'not-created'), join(root, '中文 Project')]) {
     const expected = execFileSync('bash', [new URL('../scripts/derive-collection.sh', import.meta.url).pathname, directory], { encoding: 'utf8' }).trim()
     assert.equal(deriveCollection(directory), expected)
   }
+})
+
+
+test('command timeout rejects and terminates descendants holding its output pipe', async t => {
+  const root = fixture(t)
+  const script = join(root, 'waiting child.mjs')
+  writeFileSync(script, `import {spawn} from 'node:child_process';
+    spawn(process.execPath, ['-e', 'setInterval(()=>{}, 1000)'], {stdio:'inherit'});
+    process.on('SIGTERM', () => {process.stdout.write('partial'); process.exit(0)});
+    setInterval(()=>{}, 1000)`)
+  const started = Date.now()
+  await new Promise((resolve, reject) => {
+    execCommand([process.execPath, script], [], {timeout: 200}, (error) => {
+      try { assert.match(error?.message || '', /timed out/); resolve() } catch (caught) { reject(caught) }
+    })
+  })
+  assert.ok(Date.now() - started < 5000, 'timeout must not wait for a surviving descendant')
 })

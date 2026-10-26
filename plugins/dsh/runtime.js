@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import { delimiter, extname, isAbsolute, join, resolve } from 'node:path'
 import spawn from 'cross-spawn'
@@ -50,11 +51,31 @@ export function spawnCommand(command, args = [], options = {}) {
   const { timeout, ...spawnOptions } = options
   const child = spawn(file, [...prefix, ...args], { windowsHide: true, ...spawnOptions })
   if (timeout) {
-    const timer = setTimeout(() => child.kill(), timeout)
+    const timer = setTimeout(() => {
+      child.timedOut = true
+      killProcessTree(child)
+    }, timeout)
     timer.unref()
     child.once('close', () => clearTimeout(timer))
   }
   return child
+}
+
+/** Terminate a command and its descendants, including Windows batch launchers. */
+export function killProcessTree(child) {
+  if (!child.pid) return
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
+      return
+    } catch { /* Fall back to the direct child. */ }
+  } else {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+      return
+    } catch { /* Fall back to the direct child. */ }
+  }
+  try { child.kill('SIGKILL') } catch { /* Already exited. */ }
 }
 
 export function execCommandSync(command, args, options = {}) {
@@ -72,16 +93,17 @@ export function execCommandSync(command, args, options = {}) {
 
 /** Bounded output collection for the existing CLI callbacks. */
 export function execCommand(command, args, options, callback) {
-  const child = spawnCommand(command, args, options)
+  const child = spawnCommand(command, args, { detached: process.platform !== 'win32', ...options })
   let stdout = ''
   let stderr = ''
   let error = null
   let bytes = 0
   const collect = (target, chunk) => {
+    if (error) return
     bytes += Buffer.byteLength(chunk)
     if (bytes > (options.maxBuffer ?? 4 * 1024 * 1024)) {
       error = new Error('command output exceeded its buffer limit')
-      child.kill()
+      killProcessTree(child)
       return
     }
     if (target === 'stdout') stdout += chunk
@@ -91,7 +113,8 @@ export function execCommand(command, args, options, callback) {
   child.stderr?.setEncoding('utf8').on('data', chunk => collect('stderr', chunk))
   child.on('error', caught => { error = caught })
   child.on('close', (code, signal) => {
-    callback(error || (code === 0 ? null : new Error(stderr.trim() || `command exited with ${signal || code}`)), stdout, stderr)
+    callback(error || (child.timedOut ? new Error('command timed out') : null) ||
+      (code === 0 ? null : new Error(stderr.trim() || `command exited with ${signal || code}`)), stdout, stderr)
   })
   return child
 }

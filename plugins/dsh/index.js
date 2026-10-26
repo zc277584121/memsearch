@@ -29,9 +29,9 @@
  * @module memsearch-dsh
  */
 
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { commandForSkill, detectPythonCmd, execCommand, execCommandSync, findExecutable, parseCommand, spawnCommand } from './runtime.js'
+import { commandForSkill, detectPythonCmd, execCommand, execCommandSync, findExecutable, killProcessTree, parseCommand, spawnCommand } from './runtime.js'
 import {
   appendFileSync,
   existsSync,
@@ -44,7 +44,7 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, parse, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
@@ -156,18 +156,17 @@ function detectMemsearchCmd() {
 /** Preserve derive-collection.sh's physical path and collection naming. */
 function deriveCollection(projectDir, override) {
   if (override) return override
-  let absolute = resolve(projectDir)
-  let existing = absolute
-  const suffix = []
-  while (true) {
-    try {
-      absolute = join(realpathSync(existing), ...suffix)
-      break
-    } catch {
-      const parent = dirname(existing)
-      if (parent === existing) break
-      suffix.unshift(basename(existing))
-      existing = parent
+  const absoluteInput = isAbsolute(projectDir) ? projectDir : `${process.cwd()}${sep}${projectDir}`
+  let absolute
+  try {
+    // Preserve symlink/.. semantics before any lexical normalization.
+    absolute = realpathSync.native(absoluteInput)
+  } catch {
+    absolute = parse(absoluteInput).root
+    const parts = absoluteInput.slice(absolute.length).split(process.platform === 'win32' ? /[\\/]/ : /\//)
+    for (const part of parts) {
+      const candidate = join(absolute, part)
+      try { absolute = realpathSync.native(candidate) } catch { absolute = candidate }
     }
   }
   const sanitized = basename(absolute)
@@ -881,23 +880,6 @@ function sanitizeSurrogates(text) {
   )
 }
 
-/** Terminate a summarizer and its descendants after a timeout. */
-function killProcessTree(child) {
-  if (!child.pid) return
-  if (process.platform === 'win32') {
-    try {
-      execFileSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' })
-      return
-    } catch { /* fall back to the direct child */ }
-  } else {
-    try {
-      process.kill(-child.pid, 'SIGKILL')
-      return
-    } catch { /* fall back to the direct child */ }
-  }
-  try { child.kill('SIGKILL') } catch { /* already exited */ }
-}
-
 /** Collect one summarizer child exactly once, waiting for close after timeout. */
 function collectSummarizerChild(child, {
   input,
@@ -1033,18 +1015,20 @@ function summarizeHeadless(ctx, opts, render, projectDir) {
     }
     const task = `${systemPrompt}\n\nTranscript:\n${sanitizeSurrogates(render)}`
 
-    const args = ['--profile', 'headless', task]
+    // Windows command launchers have a small command-line limit; the public
+    // headless stdin interface also keeps transcript text out of shell parsing.
+    const useStdin = process.platform === 'win32'
+    const args = ['--profile', 'headless', ...(useStdin ? [] : [task])]
 
     const child = spawnCommand(dshCmd, args, {
       cwd: projectDir,
       env: { ...process.env, MEMSEARCH_DSH_SUMMARIZE: '1' },
       detached: process.platform !== 'win32',
-      // The child never reads stdin: give it an immediately-closed stream so
-      // anything waiting for EOF (the dsh CLI or a wrapper script) is not left
-      // hanging on an open pipe until the timeout kills the process.
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // collectSummarizerChild writes and closes piped input immediately.
+      stdio: [useStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     })
     return collectSummarizerChild(child, {
+      input: useStdin ? task : undefined,
       timeoutMs: opts.summarizeTimeoutMs ?? SUMMARIZE_TIMEOUT_MS,
       timeoutMessage: 'dsh headless summarization timed out',
       exitMessage: 'dsh headless summarize exited with status',
@@ -1101,7 +1085,6 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     .replaceAll('{{AGENT_NAME}}', agentName)
     .replaceAll('{{MEMSEARCH_CMD}}', commandForSkill(memsearchCmd))
     .replaceAll('{{PYTHON_CMD}}', commandForSkill(detectPythonCmd() || ['python3']))
-    .replaceAll('{{EMBEDDING_FLAG}}', embeddingFlag(projectDir).join(' '))
     .replaceAll('{{PLUGIN_DIR}}', PLUGIN_DIR)
     .replaceAll('{{PROJECT_DIR}}', projectDir)
     .replaceAll('{{COLLECTION}}', collection || deriveCollection(projectDir))
