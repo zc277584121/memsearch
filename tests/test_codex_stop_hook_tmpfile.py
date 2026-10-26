@@ -30,17 +30,11 @@ def test_codex_stop_captures_use_distinct_files_and_preserve_existing_input(tmp_
             'printf "%s\\n" "$file"\n'
         ),
         "python3": (
-            '#!/bin/sh\nprintf "arg=<%s> done=<%s>\\n" "$1" "$MEMSEARCH_TEST_DONE" >> "$MEMSEARCH_TEST_PYTHON_LOG"\n'
-            'case "$1" in\n'
+            '#!/bin/sh\ncase "$1" in\n'
             '  */maintenance-runner.py) : > "$MEMSEARCH_TEST_DONE"; exit 0 ;;\n'
             'esac\nexec "$MEMSEARCH_TEST_PYTHON" "$@"\n'
         ),
     }
-    if sys.platform == "darwin":
-        scripts["nohup"] = (
-            '#!/bin/sh\ncommand="$1"; shift\n'
-            'exec /usr/bin/nohup "$command" -x "$@" > "$MEMSEARCH_TEST_WORKER_LOG" 2>&1\n'
-        )
     for name, content in scripts.items():
         executable = fake_bin / name
         executable.write_text(content, encoding="utf-8")
@@ -55,7 +49,8 @@ def test_codex_stop_captures_use_distinct_files_and_preserve_existing_input(tmp_
         "HOME": str(tmp_path / "home"),
         "CODEX_HOME": str(tmp_path / "codex-home"),
         "TMPDIR": str(temporary_dir),
-        "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+        # Keep the fixture first: common.sh prepends /usr/local/bin if absent.
+        "PATH": f"{fake_bin}:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "MEMSEARCH_NO_WATCH": "1",
         "MEMSEARCH_SKIP_HOOK_STDIN": "0",
         "MEMSEARCH_IN_STOP_WORKER": "",
@@ -70,8 +65,6 @@ def test_codex_stop_captures_use_distinct_files_and_preserve_existing_input(tmp_
         marker = f"capture-{index}-记忆"
         done = project / "worker-done"
         allocation = project / "allocated-path"
-        worker_log = project / "worker.log"
-        python_log = project / "python.log"
         result = subprocess.run(
             ["bash", str(SCRIPT)],
             input=json.dumps({"session_id": f"session-{index}", "last_assistant_message": marker}),
@@ -85,8 +78,6 @@ def test_codex_stop_captures_use_distinct_files_and_preserve_existing_input(tmp_
                 "MEMSEARCH_TEST_MARKER": marker,
                 "MEMSEARCH_TEST_DONE": str(done),
                 "MEMSEARCH_TEST_ALLOCATION": str(allocation),
-                "MEMSEARCH_TEST_WORKER_LOG": str(worker_log),
-                "MEMSEARCH_TEST_PYTHON_LOG": str(python_log),
             },
             timeout=15,
         )
@@ -99,11 +90,7 @@ def test_codex_stop_captures_use_distinct_files_and_preserve_existing_input(tmp_
         deadline = time.monotonic() + 15
         while not done.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
-        assert done.exists(), {
-            "worker": worker_log.read_text(errors="replace") if worker_log.exists() else "missing",
-            "python": python_log.read_text(errors="replace") if python_log.exists() else "missing",
-            "files": [str(path.relative_to(project)) for path in project.rglob("*")],
-        }
+        assert done.exists(), "capture worker did not finish"
         journals = list((memory / "memory").glob("*.md"))
         assert len(journals) == 1
         journal = journals[0].read_text(encoding="utf-8")
