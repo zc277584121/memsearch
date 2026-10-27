@@ -8,7 +8,7 @@ backed by a Milvus hybrid search index.
 ```
 capture  ── session/event turn/end ──> summarize (dsh-headless agent default, or custom-llm) ──> memory/YYYY-MM-DD.md
 hint     ── agent/pre-step step 1  ──> remind the agent to use memory-recall when needed
-recall   ── ctx.skills.register(memory-recall) ──> search → expand → transcript
+recall   ── native memory-recall skill ──> search → expand → transcript
 review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list candidates / queue review / install
 ```
 
@@ -195,7 +195,8 @@ through the DSH logger.
   whether past context is useful and invokes the skill when needed.
 - **Recall** — registers a `memory-recall` skill (invocable through DSH's
   native `skill` tool) that performs search → expand → transcript drill-down
-  and returns a curated summary.
+  and returns a curated summary. Its search collection is derived from the
+  current working directory when the skill is loaded.
 - **Maintenance** — runs the shared maintenance runner (PROJECT.md / USER.md
   upkeep and memory-to-skill distillation), triggered on `session/disposed`
   plus a 6-hourly fallback timer. Each task is a due-state machine: it runs at
