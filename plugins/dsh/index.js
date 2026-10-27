@@ -1046,7 +1046,7 @@ async function summarizeTurn(ctx, opts, render, projectDir) {
 // Memory-recall skill
 // ---------------------------------------------------------------------------
 
-function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectDir) {
+function registerMemoryRecallSkill(ctx, opts, memsearchCmd, bootProjectDir) {
   const skillPath = join(PLUGIN_DIR, 'skills', 'memory-recall', 'SKILL.md')
   let content
   try {
@@ -1056,7 +1056,7 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     return
   }
   const agentName = opts.agentName
-  content = content
+  const render = (projectDir) => content
     .replace(/^﻿?---[\s\S]*?---\s*/u, '') // strip optional YAML frontmatter
     .replace(/^<!--[\s\S]*?-->\s*/u, '') // strip the human-facing metadata comment
     .replaceAll('{{AGENT_NAME}}', agentName)
@@ -1064,9 +1064,9 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     .replaceAll('{{PYTHON_CMD}}', commandForSkill(detectPythonCmd() || ['python3']))
     .replaceAll('{{PLUGIN_DIR}}', PLUGIN_DIR)
     .replaceAll('{{PROJECT_DIR}}', projectDir)
-    .replaceAll('{{COLLECTION}}', collection || deriveCollection(projectDir))
+    .replaceAll('{{COLLECTION}}', deriveCollection(projectDir))
     .replaceAll('{{MILVUS_FLAG}}', opts.milvusUri ? `--milvus-uri "${opts.milvusUri}" ` : '')
-  ctx.skills.register({
+  const metadata = {
     name: 'memory-recall',
     description:
       'Search memsearch persistent memory for context relevant to the user\'s question. ' +
@@ -1074,10 +1074,23 @@ function registerMemoryRecallSkill(ctx, opts, memsearchCmd, collection, projectD
     whenToUse:
       'The user references past work, asks what was done before, or the task could reuse ' +
       'earlier context. Cheap to check; costs one index search.',
-    content,
     source: 'runtime',
+    provider: 'memsearch',
     invocation: { modelInvocable: true, userInvocable: true },
-  })
+  }
+  ctx.skills.registerProvider(() => ({
+    name: 'memsearch',
+    list: async () => [{
+      ...metadata,
+      // Keep runtime-skill priority; project-local definitions take precedence.
+      rank: 250,
+      locator: 'memory-recall',
+    }],
+    get: async (_candidate, { cwd } = {}) => ({
+      ...metadata,
+      content: render(cwd || bootProjectDir),
+    }),
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1218,7 +1231,7 @@ export function apply(ctx, config = {}) {
   }
 
   // --- Recall skill (always available) ---
-  registerMemoryRecallSkill(ctx, opts, memsearchCmd, bootCollection, bootProjectDir)
+  registerMemoryRecallSkill(ctx, opts, memsearchCmd, bootProjectDir)
 
   // --- Config + distillation skills (always available) ---
   registerMemoryConfigSkill(ctx)
@@ -1372,6 +1385,9 @@ export function apply(ctx, config = {}) {
 // ---------------------------------------------------------------------------
 // Exports for tests / external use
 // ---------------------------------------------------------------------------
+
+/** Register the recall skill with the calling workspace's collection. */
+export { registerMemoryRecallSkill }
 
 /** Detect the dsh CLI command used by `summarizeMode: dsh-headless`. */
 export { detectDshCmd }

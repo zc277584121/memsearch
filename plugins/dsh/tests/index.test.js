@@ -60,14 +60,20 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
       const { apply } = await import(process.env.MEMSEARCH_PLUGIN_URL)
       const listeners = {}
       const registeredSkills = []
+      const providers = []
       const warnings = []
       const ctx = {
         logger: { warn: (message) => warnings.push(message), debug: () => {} },
-        skills: { register: (skill) => registeredSkills.push(skill) },
+        skills: { register: (skill) => registeredSkills.push(skill), registerProvider: create => providers.push(create()) },
         on: (name, listener) => { listeners[name] = listener },
       }
       const scenario = JSON.parse(process.env.MEMSEARCH_TEST_SCENARIO)
       apply(ctx, { captureEnabled: false, ...scenario.config })
+      for (const provider of providers) {
+        for (const candidate of await provider.list({ cwd: process.env.MEMSEARCH_TEST_PROJECT })) {
+          registeredSkills.push(await provider.get(candidate, { cwd: process.env.MEMSEARCH_TEST_PROJECT }))
+        }
+      }
       const decision = {
         kind: scenario.kind || 'enter',
         metadata: { preserved: true },
@@ -478,7 +484,7 @@ test('apply: captureEnabled:false skips session/event capture listener', () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { captureEnabled: false })
@@ -491,7 +497,7 @@ test('apply: summarizeEnabled:false writes the raw transcript (no summarizer)', 
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { summarizeEnabled: false })
@@ -527,7 +533,7 @@ test('apply: summarize failure writes unavailable note (not raw)', async () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   // Default summarizeEnabled:true + auto resolves headless with no CLI → error
@@ -575,7 +581,7 @@ test('apply: multi-project capture writes to each project memory dir', async () 
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   const prevCli = process.env.DSH_CLI
@@ -621,7 +627,7 @@ test('apply: MEMSEARCH_DSH_SUMMARIZE=1 makes the plugin inert', () => {
     process.env.MEMSEARCH_DSH_SUMMARIZE = '1'
     const ctx = {
       logger: { warn: () => {}, debug: () => {} },
-      skills: { register: () => {} },
+      skills: { register: () => {}, registerProvider: () => {} },
       on: (name, fn) => { listeners[name] = fn },
     }
     apply(ctx, {})
@@ -636,7 +642,7 @@ test('apply: custom-llm config is honored in summarizeMode', async () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { summarizeMode: 'custom-llm', summarizeProvider: 'p', summarizeModel: 'm' })
@@ -1007,7 +1013,7 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, { injectEnabled: false })
@@ -1074,7 +1080,7 @@ test('apply: registers a session/disposed maintenance listener', () => {
   const listeners = {}
   const ctx = {
     logger: { warn: () => {}, debug: () => {} },
-    skills: { register: () => {} },
+    skills: { register: () => {}, registerProvider: () => {} },
     on: (name, fn) => { listeners[name] = fn },
   }
   apply(ctx, {})

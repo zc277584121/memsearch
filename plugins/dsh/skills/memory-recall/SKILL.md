@@ -1,8 +1,8 @@
 <!--
   memsearch-dsh memory-recall skill body.
-  Registered at plugin load by plugins/dsh/index.js via ctx.skills.register()
+  Registered by plugins/dsh/index.js via ctx.skills.registerProvider()
   with metadata (name: memory-recall, description, whenToUse) supplied in code.
-  {{PLACEHOLDER}} tokens are substituted at registration time.
+  {{PLACEHOLDER}} tokens are substituted for the calling workspace when loaded.
 -->
 
 # Memory Recall
@@ -17,7 +17,7 @@ Use this skill when the user's question could benefit from historical context: t
 
 ### 1. Search for relevant chunks
 
-Run a semantic search over the project's memsearch collection. The collection is derived from the project directory; the plugin normally injects the resolved value as `{{COLLECTION}}`:
+Run a semantic search over the project's memsearch collection. The plugin derives the collection from the current working directory when this skill is loaded:
 
 ```bash
 {{MEMSEARCH_CMD}} search "{{QUERY}}" --top-k 5 --json-output {{MILVUS_FLAG}}--default-collection "{{COLLECTION}}"
