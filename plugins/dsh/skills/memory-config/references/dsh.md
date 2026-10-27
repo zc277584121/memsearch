@@ -67,7 +67,7 @@ These are NOT in the MemSearch TOML. They live in the profile patch under the
 - id: memsearch
   config:
     captureEnabled: true     # capture completed turns
-    injectEnabled: true      # inject returned memory candidates
+    injectEnabled: true      # remind the agent to use memory-recall
     summarizeEnabled: true   # summarize turns before writing
     summarizeMode: auto      # auto | dsh-headless | custom-llm
 ```

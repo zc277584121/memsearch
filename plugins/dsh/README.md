@@ -7,7 +7,7 @@ backed by a Milvus hybrid search index.
 
 ```
 capture  ── session/event turn/end ──> summarize (dsh-headless agent default, or custom-llm) ──> memory/YYYY-MM-DD.md
-inject   ── agent/pre-step step 1  ──> memsearch search ──> returned chunks injected (zero cost otherwise)
+hint     ── agent/pre-step step 1  ──> remind the agent to use memory-recall when needed
 recall   ── ctx.skills.register(memory-recall) ──> search → expand → transcript
 review   ── web UI dock panel ──> GET/POST /memsearch-dsh/* ──> list candidates / queue review / install
 ```
@@ -78,7 +78,7 @@ block (patch the `memsearch` row you inserted). All keys are optional.
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `captureEnabled` | bool | `true` | Capture completed turns into memory. |
-| `injectEnabled` | bool | `true` | Inject returned memory candidates before each turn's first step. |
+| `injectEnabled` | bool | `true` | Remind the agent to use memory-recall before each turn's first step when memory exists. |
 | `summarizeEnabled` | bool | `true` | Summarize turns before writing (on failure a short unavailable note is written, never a raw dump). |
 | `summarizeMode` | string | `auto` | Summarizer backend. `auto` (default) mirrors the other platform plugins: if `[plugins.dsh.summarize] provider` is set in memsearch config, it uses `custom-llm`; otherwise `dsh-headless` (zero-config DSH agent). Explicit `dsh-headless` / `custom-llm` pin the backend. |
 
@@ -190,11 +190,9 @@ through the DSH logger.
   hosts, not just the process's boot directory. Turns are serialized (LLM
   summarize calls never overlap) and `captureExists` dedup keeps each turn
   idempotent if its event replays.
-- **Inject** — on `agent/pre-step` at step 1, runs a bounded memsearch search
-  over the user's question. Only when the search returns chunks does it inject
-  them plus a `[memsearch] Retrieved memory context attached.` marker;
-  otherwise the decision is returned unchanged (zero context cost). The model
-  still evaluates whether each candidate chunk is relevant.
+- **Recall hint** — on `agent/pre-step` at step 1, adds a brief reminder to
+  use `memory-recall` when the project has memory files. The agent decides
+  whether past context is useful and invokes the skill when needed.
 - **Recall** — registers a `memory-recall` skill (invocable through DSH's
   native `skill` tool) that performs search → expand → transcript drill-down
   and returns a curated summary.

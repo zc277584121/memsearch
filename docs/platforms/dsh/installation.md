@@ -66,7 +66,7 @@ The plugin works without configuration. Its DSH profile settings control lifecyc
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `captureEnabled` | `true` | Capture completed turns into the daily memory journal |
-| `injectEnabled` | `true` | Search and inject returned memory candidates before the first model step |
+| `injectEnabled` | `true` | Remind the agent to use memory-recall before the first model step when memory exists |
 | `summarizeEnabled` | `true` | Summarize turns before writing them |
 | `summarizeMode` | `auto` | Use a configured API provider when present; otherwise use a one-shot DSH headless agent |
 

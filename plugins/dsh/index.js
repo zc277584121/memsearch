@@ -14,11 +14,8 @@
  *              never overlap, with `captureExists` dedup so a turn is recorded
  *              exactly once even across restarts.
  *   inject   — before the first model step of each turn, `agent/pre-step`
- *              runs a bounded memsearch search over the user's question and,
- *              only when search results exist, injects them plus a
- *              `[memsearch] Retrieved memory context attached.` marker. When
- *              search returns no chunks, the decision is returned unchanged —
- *              zero context cost.
+ *              reminds the agent to use memory-recall when past context is
+ *              useful. The agent chooses when to search through the skill.
  *   recall   — registers a `memory-recall` skill (search → expand → transcript)
  *              that the model can invoke through the native `skill` tool.
  *
@@ -59,12 +56,9 @@ export const name = 'memsearch'
 export const inject = ['agents', 'skills', 'sessionPersistence']
 
 const DEFAULT_AGENT_NAME = 'DeepSeek Harness'
-const MEMSEARCH_MARKER = '[memsearch] Retrieved memory context attached.'
-const SEARCH_TOP_K = 5
-const SEARCH_TIMEOUT_MS = 15000
+const RECALL_HINT = '[memsearch] Recall available if needed. Use the memory-recall skill when the question could benefit from past sessions, decisions, or work in this project.'
 const SUMMARIZE_TIMEOUT_MS = 30000
 const CAPTURE_MAX_CHARS = 6000
-const INJECT_SNIPPET_CHARS = 180
 const DAILY_FILE_RE = /^\d{4}-\d{2}-\d{2}\.md$/
 const MAINTENANCE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h; runner's due-state gates actual runs
 
@@ -318,7 +312,7 @@ function hhmmStr() {
 }
 
 // ---------------------------------------------------------------------------
-// Search / index (memsearch CLI)
+// Index (memsearch CLI)
 // ---------------------------------------------------------------------------
 
 /**
@@ -334,35 +328,6 @@ function embeddingFlag(projectDir) {
   return !existsSync(join(homedir(), '.memsearch', 'config.toml')) &&
     !existsSync(join(projectDir, '.memsearch.toml'))
     ? ['--provider', 'onnx'] : []
-}
-
-/**
- * Run one bounded memsearch search over the project collection.
- * @returns parsed chunks plus an explicit error when the CLI call fails.
- */
-function runSearch(memsearchCmd, query, collection, projectDir, milvusUri) {
-  return new Promise((resolve) => {
-    execCommand(
-      memsearchCmd,
-      ['search', query, '--top-k', String(SEARCH_TOP_K), '--json-output',
-        ...embeddingFlag(projectDir), ...milvusUriFlag(milvusUri), '--default-collection', collection],
-      { cwd: projectDir, timeout: SEARCH_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          const detail = String(stderr || error.message || 'unknown error').trim()
-          return resolve({ chunks: null, error: detail })
-        }
-        try {
-          const chunks = JSON.parse(stdout)
-          resolve(Array.isArray(chunks)
-            ? { chunks, error: '' }
-            : { chunks: null, error: 'invalid non-array JSON output' })
-        } catch {
-          resolve({ chunks: null, error: 'invalid JSON output' })
-        }
-      },
-    )
-  })
 }
 
 /** Fire-and-forget `memsearch index` refresh for a project. */
@@ -740,16 +705,6 @@ function registerSkillReviewRoutes(ctx, webServer, memsearchCmd) {
       sendJson(res, 200, { path: abs, rel: relPath, name: basename(abs), ext, content })
     },
   })
-}
-
-/** Compact human-readable memory block injected into the request. */
-function renderMemoryBlock(chunks) {
-  const lines = chunks.map((chunk, index) => {
-    const source = chunk.source || 'memory'
-    const snippet = (chunk.content || '').trim().replace(/\s+/g, ' ').slice(0, INJECT_SNIPPET_CHARS)
-    return `${index + 1}. [${source}] ${snippet}`
-  })
-  return `${MEMSEARCH_MARKER}\n\nRetrieved memory candidates from past sessions:\n${lines.join('\n')}`
 }
 
 // ---------------------------------------------------------------------------
@@ -1269,40 +1224,21 @@ export function apply(ctx, config = {}) {
   registerMemoryConfigSkill(ctx)
   registerMemoryToSkillSkill(ctx)
 
-  // --- Pre-step injection: returned memory candidates, zero context otherwise ---
+  // --- Pre-step recall hint: the agent decides when to search ---
   ctx.on(
     'agent/pre-step',
-    async ({ agent, turn, step, signal }, next) => {
+    async ({ agent, step, signal }, next) => {
       const decision = await next()
       if (!opts.injectEnabled) return decision
       if (decision.kind === 'reject' || signal.aborted) return decision
       if (step !== 1) return decision
 
-      const question = (decision.messages || [])
-        .map((message) => textFromContent(message.content))
-        .find((text) => text.length > 0)
-      if (!question || question.length < 3) return decision
-
-      const projectDir = projectDirFor(agent.session)
-      const memoryDir = memoryDirFor(projectDir)
+      const memoryDir = memoryDirFor(projectDirFor(agent.session))
       if (!hasMemoryFiles(memoryDir)) return decision
 
-      const collection = resolveCollection(projectDir)
-      if (!collection) return decision
-      const { chunks, error } = await runSearch(
-        memsearchCmd,
-        question,
-        collection,
-        projectDir,
-        opts.milvusUri,
-      )
-      if (error) ctx.logger.warn(`[memsearch] search failed: ${error}`)
-      if (!chunks || chunks.length === 0) return decision
-
-      const text = renderMemoryBlock(chunks)
-      const memoryMessage = await createMemoryMessage(ctx, text)
+      const memoryMessage = await createMemoryMessage(ctx, RECALL_HINT)
       return {
-        kind: 'enter',
+        ...decision,
         messages: [...decision.messages, memoryMessage],
       }
     },

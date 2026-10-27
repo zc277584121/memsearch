@@ -6,7 +6,7 @@ import os from 'node:os'
 
 import { detectDshCmd, summarizeTurn, apply, resolveSummarizeMode, renderTurn, captureExists, writeCapture, memsearchDirFor, listSkillCandidates, resolveSkillInstallTarget, sanitizeSurrogates } from '../index.js'
 
-async function withInjectionFixture(searchResults, assertion, oldCore = false, searchError = '', configs = {}) {
+async function withInjectionFixture(searchResults, assertion, oldCore = false, searchError = '', configs = {}, scenario = {}) {
   const root = fs.mkdtempSync(`${os.tmpdir()}/memsearch-inject-`)
   const projectDir = `${root}/project`
   const memoryDir = `${root}/state/memory`
@@ -23,7 +23,7 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
     fs.writeFileSync(`${home}/.memsearch/config.toml`, configs.global)
   }
   if (configs.project !== undefined) fs.writeFileSync(`${projectDir}/.memsearch.toml`, configs.project)
-  fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
+  if (scenario.hasMemory !== false) fs.writeFileSync(`${memoryDir}/2026-09-07.md`, '# Test memory\n', 'utf-8')
   fs.writeFileSync(resultFile, JSON.stringify(searchResults), 'utf-8')
   fs.writeFileSync(
     `${fakeBin}/memsearch`,
@@ -66,16 +66,18 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
         skills: { register: (skill) => registeredSkills.push(skill) },
         on: (name, listener) => { listeners[name] = listener },
       }
-      apply(ctx, { captureEnabled: false })
+      const scenario = JSON.parse(process.env.MEMSEARCH_TEST_SCENARIO)
+      apply(ctx, { captureEnabled: false, ...scenario.config })
       const decision = {
-        kind: 'enter',
-        messages: [{ role: 'user', content: [{ type: 'text', text: 'What did we decide about the release?' }] }],
+        kind: scenario.kind || 'enter',
+        metadata: { preserved: true },
+        messages: [{ role: 'user', content: [{ type: 'text', text: scenario.question || 'What did we decide about the release?' }] }],
       }
       let result = null
       let error = ''
       try {
         result = await listeners['agent/pre-step'](
-          { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: 1, signal: {} },
+          { agent: { session: { header: { cwd: process.env.MEMSEARCH_TEST_PROJECT } } }, turn: 1, step: scenario.step || 1, signal: { aborted: !!scenario.aborted } },
           async () => decision,
         )
       } catch (caught) {
@@ -106,6 +108,7 @@ async function withInjectionFixture(searchResults, assertion, oldCore = false, s
         MEMSEARCH_TEST_RESULT: resultFile,
         MEMSEARCH_TEST_OLD_CORE: oldCore ? '1' : '0',
         MEMSEARCH_TEST_SEARCH_ERROR: searchError,
+        MEMSEARCH_TEST_SCENARIO: JSON.stringify(scenario),
       },
     })
     await assertion({ ...JSON.parse(stdout), callLog, home, projectDir, fakeBin, resultFile })
@@ -124,7 +127,7 @@ for (const [name, configs, useOnnx] of [
     await withInjectionFixture([], async ({ callLog, home, projectDir }) => {
       const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
       const embeddingCalls = calls.filter((call) => /^(search|index) /.test(call))
-      assert.equal(embeddingCalls.filter((call) => call.startsWith('search ')).length, 1)
+      assert.equal(embeddingCalls.filter((call) => call.startsWith('search ')).length, 0)
       assert.ok(embeddingCalls.some((call) => call.startsWith('index ')), 'startup index must run')
       for (const call of embeddingCalls) {
         assert.equal(/ --provider onnx(?: |$)/.test(call), useOnnx, call)
@@ -1015,68 +1018,53 @@ test('apply: injectEnabled:false makes pre-step injection a no-op', async () => 
   assert.equal(result.messages.length, 1, 'no memory message injected')
 })
 
-test('apply: empty search result keeps pre-step context unchanged while recall stays available', async () => {
-  await withInjectionFixture([], async ({ result, unchanged, registeredSkillNames, callLog }) => {
-    assert.equal(unchanged, true, 'empty search result must not inject a marker')
-    assert.equal(result.messages.length, 1)
-    assert.ok(
-      registeredSkillNames.includes('memory-recall'),
-      'native recall skill remains registered independently of automatic injection',
-    )
-    const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-    const searches = calls.filter((call) => call.startsWith('search '))
-    assert.equal(searches.length, 1)
-    assert.ok(searches[0].includes('--default-collection '))
-    assert.ok(!searches[0].includes('--collection '))
-  })
-})
-
-test('apply: search failure is explicit while injection remains nonblocking', async () => {
-  await withInjectionFixture([], async ({ unchanged, warnings, registeredSkillNames }) => {
-    assert.equal(unchanged, true)
-    assert.ok(warnings.some((message) => message.includes('search failed')))
-    assert.ok(warnings.some((message) => message.includes('Collection missing')))
-    assert.ok(registeredSkillNames.includes('memory-recall'))
-  }, false, 'Collection missing')
-})
-
-test('apply: returned chunks inject one retrieved-context marker with producer-owned source metadata', async () => {
-  await withInjectionFixture(
-    [{ source: 'memory/2026-09-07.md:4', content: 'The release marker is PINE-NEBULA-8643.' }],
-    async ({ result, unchanged, registeredSkillNames, callLog }) => {
-      assert.equal(unchanged, false)
+for (const [label, results] of [
+  ['empty search results', []],
+  ['available relevant results', [{ source: 'memory/2026-09-07.md:4', content: 'PINE-NEBULA-8643' }]],
+]) {
+  test(`recall hint: prompts for the skill without searching with ${label}`, async () => {
+    await withInjectionFixture(results, async ({ result, registeredSkillNames, callLog }) => {
       assert.equal(result.kind, 'enter')
+      assert.deepEqual(result.metadata, { preserved: true })
       assert.equal(result.messages.length, 2)
-      const injected = result.messages[1]
-      const text = injected.content[0].text
-      const marker = '[memsearch] Retrieved memory context attached.'
-      assert.equal(text.split(marker).length - 1, 1, 'exactly one retrieved-context marker')
-      assert.ok(text.includes('Retrieved memory candidates from past sessions:'))
-      assert.ok(text.includes('PINE-NEBULA-8643'))
-      assert.equal(injected.source.kind, 'plugin:memsearch')
-      assert.equal(injected.source.plugin, undefined, 'retired shared plugin wrapper must not be emitted')
-      assert.equal(injected.source.form, 'snapshot')
-      assert.equal(injected.source.sections[0].name, 'memsearch')
-      assert.equal(injected.source.sections[0].text, text)
-      assert.ok(
-        registeredSkillNames.includes('memory-recall'),
-        'native recall skill remains distinct from automatic injection',
-      )
+      const hint = result.messages[1]
+      assert.match(hint.content[0].text, /Recall available if needed/)
+      assert.match(hint.content[0].text, /memory-recall/)
+      assert.doesNotMatch(hint.content[0].text, /PINE-NEBULA|Retrieved memory/)
+      assert.equal(hint.source.kind, 'plugin:memsearch')
+      assert.equal(hint.source.form, 'snapshot')
+      assert.equal(hint.source.sections[0].text, hint.content[0].text)
+      assert.ok(registeredSkillNames.includes('memory-recall'))
       const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-      const searches = calls.filter((call) => call.startsWith('search '))
-      assert.equal(searches.length, 1)
-      assert.ok(searches[0].includes('--default-collection '))
-      assert.ok(!searches[0].includes('--collection '))
-    },
-  )
-})
+      assert.ok(!calls.some(call => call.startsWith('search ')))
+    })
+  })
+}
 
-test('apply: rejects an old core before a memory search', async () => {
-  await withInjectionFixture([], async ({ error, callLog }) => {
-    assert.match(error, /--default-collection support is required/)
-    const calls = fs.readFileSync(callLog, 'utf-8').trim().split('\n')
-    assert.ok(!calls.some((call) => call.startsWith('search ')))
-  }, true)
+for (const [label, scenario] of [
+  ['disabled', { config: { injectEnabled: false } }],
+  ['later model step', { step: 2 }],
+  ['rejected turn', { kind: 'reject' }],
+  ['aborted turn', { aborted: true }],
+  ['no memory files', { hasMemory: false }],
+]) {
+  test(`recall hint: leaves ${label} unchanged`, async () => {
+    await withInjectionFixture([], async ({ unchanged, registeredSkillNames, callLog }) => {
+      assert.equal(unchanged, true)
+      assert.ok(registeredSkillNames.includes('memory-recall'))
+      assert.ok(!fs.readFileSync(callLog, 'utf-8').split('\n').some(call => call.startsWith('search ')))
+    }, false, '', {}, scenario)
+  })
+}
+
+test('recall hint: a short prompt and unavailable search do not prevent the reminder', async () => {
+  await withInjectionFixture([], async ({ result, error, warnings, callLog }) => {
+    assert.equal(error, '')
+    assert.equal(result.messages.length, 2)
+    assert.match(result.messages[1].content[0].text, /memory-recall/)
+    assert.ok(!warnings.some(message => message.includes('search failed')))
+    assert.ok(!fs.readFileSync(callLog, 'utf-8').split('\n').some(call => call.startsWith('search ')))
+  }, true, 'Collection missing', {}, { question: 'OK' })
 })
 
 test('apply: registers a session/disposed maintenance listener', () => {
