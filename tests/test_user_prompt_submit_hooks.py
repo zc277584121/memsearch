@@ -132,4 +132,3 @@ def test_capability_marker_is_synchronized_across_direct_consumers() -> None:
 
     for consumer in consumers:
         assert CAPABILITY_MARKER in consumer.read_text(encoding="utf-8"), consumer
-
